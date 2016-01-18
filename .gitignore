@@ -1,0 +1,6 @@
+DownloadsESP8266/
+tmp/
+*.sh
+*.[oa]
+*.swp
+*.log
