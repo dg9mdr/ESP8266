@@ -1,0 +1,7 @@
+httpd/
+*.sh
+*.[oa]
+*.swp
+*.log
+*.lck
+*.~
