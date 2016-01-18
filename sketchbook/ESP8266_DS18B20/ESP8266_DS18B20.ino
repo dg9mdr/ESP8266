@@ -13,6 +13,22 @@
  modify it under the terms of the GNU General Public License
  version 2 as published by the Free Software Foundation.
  */
+
+// ////////////////////////////////////////////////////////
+// EEPROM.begin(512);
+// int addr=0;
+// addr += EEPROM.put(addr, myFloat);
+// addr += EEPROM.put(addr, myInt);
+// EEPROM.end()
+// ////////////////////////////////////////////////////////
+// EEPROM.begin(512);
+// int addr=0;
+// addr += EEPROM.get(addr, myNewFloat);
+// addr += EEPROM.get(addr, myNewInt);
+// EEPROM.commit();
+// EEPROM.end()
+// ////////////////////////////////////////////////////////
+
 #include <ESP8266WiFi.h>
 #include <Base64.h>
 // #include <EEPROM.h>
