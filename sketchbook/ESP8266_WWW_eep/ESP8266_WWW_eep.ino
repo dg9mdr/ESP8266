@@ -4,8 +4,8 @@
 
 ESP8266WebServer server(80);
 
-const char* ssid = "test";
-const char* passphrase = "test";
+const char* ssid = "TP-LINK";
+const char* passphrase = "Das_ist_eine_1a_sichere_Passphrase";
 String st;
 String content;
 int statusCode;
@@ -33,14 +33,25 @@ void setup() {
       epass += char(EEPROM.read(i));
     }
   Serial.print("PASS: ");
-  Serial.println(epass);  
-  if ( esid.length() > 1 ) {
+  Serial.println(epass);
+
+ /*  
+  if ( esid.length() > 1 ) 
+  {
       WiFi.begin(esid.c_str(), epass.c_str());
       if (testWifi()) {
         launchWeb(0);
         return;
       } 
   }
+ */
+  WiFi.begin(ssid, passphrase);
+  if (testWifi()) 
+  {
+        launchWeb(0);
+        return;
+  } 
+ 
   setupAP();
 }
 

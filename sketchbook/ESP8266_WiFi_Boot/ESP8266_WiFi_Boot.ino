@@ -62,12 +62,12 @@ void launchWeb(int webtype) {
           Serial.println("WiFi connected");
           Serial.println(WiFi.localIP());
           Serial.println(WiFi.softAPIP());
-          if (!mdns.begin("esp8266", WiFi.localIP())) {
-            Serial.println("Error setting up MDNS responder!");
-            while(1) { 
-              delay(1000);
-            }
-          }
+//          if (!mdns.begin("esp8266", WiFi.localIP())) {
+//            Serial.println("Error setting up MDNS responder!");
+//            while(1) { 
+//              delay(1000);
+//            }
+//          }
           Serial.println("mDNS responder started");
           // Start the server
           server.begin();
