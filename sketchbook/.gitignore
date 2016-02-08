@@ -1,7 +1,16 @@
 libraries/
 tmp/
 scratch/
+ESP8266_arduino/
+ESP8266_DS18B20/
+ESP8266_WebServer/
+ESP8266_WiFi_Boot/
+ESP8266_WWW_eep/
+ESP_SimpleHTTPD/
+ESP_WebConfig/
+webserver_sample_2/
 *.sh
 *.[oa]
 *.swp
 *.log
+
