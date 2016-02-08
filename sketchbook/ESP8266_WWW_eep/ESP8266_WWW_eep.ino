@@ -4,8 +4,8 @@
 
 ESP8266WebServer server(80);
 
-const char* ssid = "TP-LINK";
-const char* passphrase = "Das_ist_eine_1a_sichere_Passphrase";
+const char* ssid = "";
+const char* passphrase = "";
 String st;
 String content;
 int statusCode;

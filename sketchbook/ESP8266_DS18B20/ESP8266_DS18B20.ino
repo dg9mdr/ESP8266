@@ -204,7 +204,7 @@ void loop() {
 
   if (temp != oldTemp)
   {
-    sendTeperature(temp);
+//    sendTeperature(temp);
     oldTemp = temp;
   }
 
