@@ -1,6 +1,7 @@
 DownloadsESP8266/
 LocalTools/
 LocalLibs/
+LUA/
 tmp/
 *.sh
 *.[oa]
