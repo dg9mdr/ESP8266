@@ -9,6 +9,7 @@ ESP8266_WWW_eep/
 ESP_SimpleHTTPD/
 ESP_WebConfig/
 webserver_sample_2/
+ESP8266_SensorNode/
 *.sh
 *.[oa]
 *.swp
