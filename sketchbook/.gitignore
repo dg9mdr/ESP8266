@@ -11,6 +11,8 @@ ESP_WebConfig/
 webserver_sample_2/
 ESP8266_SensorNode/
 SDWebServer/
+ESP8266_SD_test/
+ESP8266_SDWebServer/
 *.sh
 *.[oa]
 *.swp
