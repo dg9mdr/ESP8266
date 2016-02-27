@@ -42,21 +42,30 @@
 // ************************************************************************
 // set these defines to match your ESP-module 
 // ************************************************************************
-//
-// #undef USE_ESP01
+// 
 #define USE_ESP01
-#undef USE_ESP12
+// #undef USE_ESP01
+//
+// #define USE_ESP07
+#undef USE_ESP07
+//
 // #define USE_ESP12
-#undef USE_ESP12E
+#undef USE_ESP12
+//
 // #define USE_ESP12E
+#undef USE_ESP12E
+//
+// which pin is used for factory settings
+#define GPIO_AS_RESET           0  // GPIO00 is always possible
+// #undef GPIO_AS_RESET              // no reset
 //
 // ************************************************************************
 // set these defines to match your sensors
 // ************************************************************************
 //
 // --------------------- sensor type DS18B20 -----------------------------
-// #define USE_DS18B20
-#undef USE_DS18B20
+#define USE_DS18B20
+// #undef USE_DS18B20
 // ------------------ DS18B20 dependend macros ---------------------------
 #ifdef USE_DS18B20
 #define DS18B20_READINTVAL   5000  // read interval in ms
@@ -66,8 +75,8 @@
                                    //       if GPIO0 is LOW on (re)start
 #endif // USE_DS18B20
 // ------------------- sensor type DHT11/DHT22 ---------------------------
-#define USE_DHT
-// #undef USE_DHT
+// #define USE_DHT
+#undef USE_DHT
 // ----------------- DHT11/DHT22 dependend macros ------------------------
 #ifdef USE_DHT
 #define DHTTYPE             DHT22
@@ -78,10 +87,6 @@
 //
 #define DHT_DEGREE_UNIT      DHT_READ_CELSIUS
 #endif // USE_DHT
-
-
-
-
 //
 // ************************************************************************
 // set these defines to match the WEB-API you want to serve
@@ -109,10 +114,30 @@
 // ************************************************************************
 // set these defines to match your favored ESPs behavior
 // ************************************************************************
-//
+//  create a wifi client
 #define USE_WIFICLIENT
+//  create a webserver
 #define USE_WWWSERVER
+//  port for the webserver
 #define WWW_LISTENPORT         80
+//  support for SD cards
+#define SD_SUPPORT
+//
+// ************************************************************************
+// set pin that is used as CS for sd ard reader
+// ************************************************************************
+//
+// ESP-01 has no SPI bus
+#if defined( USE_ESP01 ) 
+#undef SD_SUPPORT
+#else
+#ifdef SD_SUPPORT
+##define SERVER_ROOT          "/WWWROOT"
+#define CHECKSUM_FILE       "CRCDEF.TXT"
+#define SPI_CHIPSEL                    2
+#endif // SD_SUPPORT
+#endif // USE_ESP01
+#define EEPROM_SIZE                 4096
 //
 // ************************************************************************
 // include necessary lib header
@@ -129,6 +154,11 @@
 #include <ArduinoJson.h>
 #include <EEPROM.h>
 
+#ifdef SD_SUPPORT
+#include <SPI.h>
+#include <SD.h>
+#endif // SD_SUPPORT
+
 #ifdef USE_DS18B20
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -143,10 +173,9 @@
 // ************************************************************************
 //
 // ------------------------ misc. values ---------------------------------
-#define SERIAL_BAUD                    115200
+#define SERIAL_BAUD               115200
 //
 // -------------------- EEPROM related stuff -----------------------------
-#define EEPROM_BLOCK_SIZE           1024
 #define EEPROM_MAGIC_BYTE           0xEA
 #define LEN_TRAILING_LENGTH            2  // means two byte representing 
                                           // the real length of the data field
@@ -165,6 +194,26 @@
 #define LEN_EMONCMS_URL_MAX           80  // max. length for the emoncms url
 #define LEN_EMONCMS_FEED_FMT_MAX      80  // max. length for the formatter
 #define LEN_EMONCMS_FEED_URLBUF_MAX  160  // max. length for the feeder url
+
+//
+// ----- data to access SHC -----
+//
+#define LEN_SHC_READAPI_KEY_MAX       32  // max. length of a SHC key
+#define LEN_SHC_WRITEAPI_KEY_MAX      32  // max. length of a SHC key
+#define LEN_SHC_HOST_MAX              80  // max. length for the SHC host
+#define LEN_SHC_PORT_MAX               2  // max. length for the SHC port
+#define LEN_SHC_URL_MAX               80  // max. length for the SHC url
+#define LEN_SHC_FEED_FMT_MAX          80  // max. length for the formatter
+#define LEN_SHC_FEED_URLBUF_MAX      160  // max. length for the feeder url
+
+//
+// ----- data for DS18B20 table -----
+//
+#define LEN_DS18B20_ID_MAX            16
+#define LEN_DS18B20_FEEDER_ID_MAX      2
+#define LEN_DS18B20_NAME_MAX          30
+#define LEN_DS18B20_NUM_ENTRIES        2
+#define LEN_DS18B20_VAL_FLAG           1
 
 //
 // ----------------------- EEPROM layout ---------------------------------
@@ -196,10 +245,47 @@
 #define DATA_LEN_EMONCMS_URL           (LEN_TRAILING_LENGTH + LEN_EMONCMS_URL_MAX)
 #define DATA_POS_EMONCMS_FEED_FMT      (DATA_POS_EMONCMS_URL + DATA_LEN_EMONCMS_URL)
 #define DATA_LEN_EMONCMS_FEED_FMT      (LEN_TRAILING_LENGTH + LEN_EMONCMS_FEED_FMT_MAX)
-#
-# ---- special marker to make life easier
-#define DATA_ENDPOS_EEPROM             (DATA_POS_EMONCMS_FEED_FMT + DATA_LEN_EMONCMS_FEED_FMT)
-#
+//
+// ----- data to access SHC -----
+//
+#define DATA_POS_SHC_READAPI_KEY   (DATA_POS_PASSWORD + DATA_LEN_PASSWORD)
+#define DATA_LEN_SHC_READAPI_KEY   (LEN_TRAILING_LENGTH + LEN_SHC_READAPI_KEY_MAX)
+#define DATA_POS_SHC_WRITEAPI_KEY  (DATA_POS_SHC_READAPI_KEY + DATA_LEN_SHC_READAPI_KEY)
+#define DATA_LEN_SHC_WRITEAPI_KEY  (LEN_TRAILING_LENGTH + LEN_SHC_WRITEAPI_KEY_MAX)
+#define DATA_POS_SHC_HOST          (DATA_POS_SHC_WRITEAPI_KEY + DATA_LEN_SHC_WRITEAPI_KEY)
+#define DATA_LEN_SHC_HOST          (LEN_TRAILING_LENGTH + LEN_SHC_HOST_MAX)
+#define DATA_POS_SHC_PORT          (DATA_POS_SHC_HOST + DATA_LEN_SHC_HOST)
+#define DATA_LEN_SHC_PORT          (LEN_TRAILING_LENGTH + LEN_SHC_PORT_MAX)
+#define DATA_POS_SHC_URL           (DATA_POS_SHC_PORT + DATA_LEN_SHC_PORT)
+#define DATA_LEN_SHC_URL           (LEN_TRAILING_LENGTH + LEN_SHC_URL_MAX)
+#define DATA_POS_SHC_FEED_FMT      (DATA_POS_SHC_URL + DATA_LEN_SHC_URL)
+#define DATA_LEN_SHC_FEED_FMT      (LEN_TRAILING_LENGTH + LEN_SHC_FEED_FMT_MAX)
+//
+// ----- table of DS18B20 sensors -----
+//
+#define MAX_DS19B20_ENTRIES           10
+//
+#define DATA_POS_DS18B20_TBL_BEGIN (DATA_POS_SHC_FEED_FMT + DATA_LEN_SHC_FEED_FMT)
+//
+
+#define DATA_LEN_NUM_TBL_ENTRIES   LEN_DS18B20_NUM_ENTRIES
+#define DATA_POS_DS18B20_FIRST_REC (DATA_POS_DS18B20_TBL_BEGIN + DATA_LEN_NUM_TBL_ENTRIES)
+//
+#define DATA_LEN_VALIDATION_FLAG   LEN_DS18B20_VAL_FLAG
+#define DATA_LEN_SENSOR_ID         (LEN_TRAILING_LENGTH + LEN_DS18B20_ID_MAX)
+#define DATA_LEN_SENSOR_FEEDER_ID  (LEN_TRAILING_LENGTH + LEN_DS18B20_FEEDER_ID_MAX)
+#define DATA_LEN_SENSOR_NAME       (LEN_TRAILING_LENGTH + LEN_DS18B20_NAME_MAX)
+//
+#define LEN_DS18B20_SENSOR_RECORD  (DATA_LEN_VALIDATION_FLAG + DATA_LEN_SENSOR_ID + DATA_LEN_SENSOR_FEEDER_ID + DATA_LEN_SENSOR_NAME)
+//
+#define LEN_DS18B20_TABLE_SIZE     ((LEN_DS18B20_SENSOR_RECORD * MAX_DS19B20_ENTRIES) + DATA_LEN_NUM_TBL_ENTRIES)
+//
+#define DATA_POS_DS18B20_TBL_END   (DATA_POS_DS18B20_TBL_BEGIN + LEN_DS18B20_TABLE_SIZE)
+//
+// ---- special marker to make life easier
+#define DATA_ENDPOS_EEPROM             DATA_POS_DS18B20_TBL_END
+
+//
 //
 // ... further EEPROM stuff here like above scheme
 //
@@ -224,6 +310,12 @@ static const PROGMEM uint32_t crc_table[16] = {
     0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c
 };
 //
+// ---------------------- sd card support --------------------------------
+//
+#ifdef SD_SUPPORT
+bool hasSD;
+#endif // SD_SUPPORT
+//
 // ------------------------- WWWSERVER -----------------------------------
 //
 #ifdef USE_WWWSERVER
@@ -240,7 +332,7 @@ int serverStatusCode;
 // amount of input fields in the form
 #define ARGS_ADMIN_PAGE                 6
 
-// names of the input fields
+// names of the input fields for emoncms
 #define FORM_DATAFIELD_NAME_SSID        "ssid"
 #define FORM_DATAFIELD_NAME_PASSWORD    "pass"
 #define FORM_DATAFIELD_NAME_EMON_RDKEY  "emonrdkey"
@@ -250,11 +342,49 @@ int serverStatusCode;
 #define FORM_DATAFIELD_NAME_EMON_URL    "emonurl"
 #define FORM_DATAFIELD_NAME_EMON_FORMAT "emonfmt"
 
+// names of the input fields for shc
+#define FORM_DATAFIELD_NAME_SSID        "ssid"
+#define FORM_DATAFIELD_NAME_PASSWORD    "pass"
+#define FORM_DATAFIELD_NAME_SHC_RDKEY  "shcrdkey"
+#define FORM_DATAFIELD_NAME_SHC_WRKEY  "shcwrkey"
+#define FORM_DATAFIELD_NAME_SHC_HOST   "shchost"
+#define FORM_DATAFIELD_NAME_SHC_PORT   "shcport"
+#define FORM_DATAFIELD_NAME_SHC_URL    "shcurl"
+#define FORM_DATAFIELD_NAME_SHC_FORMAT "shcfmt"
+
 #endif // USE_WWWSERVER
 //
 // -------------------------- DS18B20 ------------------------------------
 //
 #ifdef USE_DS18B20
+//
+struct _ser_map {
+    int feedId;
+    char serial[LEN_DS18B20_FEEDER_ID_MAX];
+    char name[LEN_DS18B20_NAME_MAX];
+};
+
+//
+struct _ser_map serMappingTable[MAX_DS19B20_ENTRIES];
+//
+
+int serToFeederId( char* feeder )
+{
+    int i, found;
+
+    for( i = found = 0; found == 0 && serMappingTable[i].serial != NULL; i++ )
+    {
+        if( feeder != NULL )
+        {
+            if(strcmp(feeder, serMappingTable[i].serial) == 0 )
+            {
+                found = serMappingTable[i].feedId;
+            }
+        }
+    }
+    return(found);
+}
+
   // Initialize 1wire bus
 OneWire oneWire(ONE_WIRE_BUS);
   // create DS18B20 object on the bus
@@ -302,8 +432,30 @@ String emoncmsHost = "";
 String emoncmsPort = "";
 String emoncmsUrl = "";
 String emoncmsFeedFmt = "";
-
+//
 #endif // USE_WEBAPI_EMONCMS
+//
+// ---------------------------- SHC --------------------------------------
+//
+#ifdef USE_WEBAPI_SHC
+//
+String shcReadApiKey = "76a82bbb2879d0da909b4082ea3b953b";
+String shcWriteApiKey = "2a580c6225c0c3366dfbb17490554bb6";
+String shcHost = "192.168.1.121";
+String shcPort = "80";
+String shcUrl = "/emoncms/feed/";
+String shcFeedFmt = "insert.json?apikey=%s&id=%d&value=%s";
+
+#else // not defined USE_WEBAPI_SHC
+  // set variables to empty string to avoid errors when storing values to EEPROM
+String shcReadApiKey = "";
+String shcWriteApiKey = "";
+String shcHost = "";
+String shcPort = "";
+String shcUrl = "";
+String shcFeedFmt = "";
+//
+#endif // USE_WEBAPI_SHC
 //
 // ------------------------ WIFICLIENT -----------------------------------
 //
@@ -340,17 +492,19 @@ unsigned long crc_eeprom(int startPos, int length)
 {
   unsigned long crc = ~0L;
   int endPos;
+  byte currByte;
 
   if( startPos > 0 && 
-      startPos < EEPROM.length() && 
+      startPos < EEPROM_SIZE && 
       length > 0 && 
-      ( endPos = (startPos + length) ) < EEPROM.length() )
+      ( endPos = (startPos + length) ) < EEPROM_SIZE )
   {
 
     for (int index = startPos; index < endPos; ++index) 
     {
-      crc = crc_table[(crc ^ EEPROM[index]) & 0x0f] ^ (crc >> 4);
-      crc = crc_table[(crc ^ (EEPROM[index] >> 4)) & 0x0f] ^ (crc >> 4);
+      currByte = EEPROM.read(index);
+      crc = crc_table[(crc ^ currByte) & 0x0f] ^ (crc >> 4);
+      crc = crc_table[(crc ^ (currByte >> 4)) & 0x0f] ^ (crc >> 4);
       crc = ~crc;
     }
   }
@@ -367,7 +521,7 @@ unsigned long crc_eeprom(int startPos, int length)
 //
 void eeWipe( void )
 {
-  for( int index = 0; index < EEPROM_BLOCK_SIZE; i++ )
+  for( int index = 0; index < EEPROM_SIZE; index++ )
   {
     EEPROM.write( index, '\0' );
   }
@@ -397,7 +551,6 @@ int eeStoreFieldLength( char* len, int dataIndex )
 
   return(retVal);
 }
-
 //
 // restore field length from a specific position
 //
@@ -421,8 +574,6 @@ int eeRestoreFieldLength( char* len, int dataIndex )
 
   return(retVal);
 }
-
-
 //
 // store a byte array to a specific position
 //
@@ -441,8 +592,6 @@ int eeStoreBytes( const char* data, short len, int dataIndex )
 
   return(retVal);
 }
-
-
 //
 // store a string var to a specific position
 //
@@ -454,7 +603,6 @@ int eeStoreString( String data, int dataIndex )
 
   return(retVal);
 }
-
 //
 // restore a string var from a specific position
 //
@@ -489,7 +637,6 @@ int eeRestoreString( String& data, int dataIndex, int maxLen )
 
   return(retVal);
 }
-
 //
 // check whether first byte in EEPROM is "magic"
 //
@@ -537,8 +684,81 @@ bool eeStoreSettings( void )
 //
 #endif // USE_WEBAPI_EMONCMS
 //
+//
+#ifdef USE_WEBAPI_SHC
+//
+  eeStoreString( shcReadApiKey, DATA_POS_EMONCMS_READAPI_KEY );
+  eeStoreString( shcWriteApiKey, DATA_POS_EMONCMS_WRITEAPI_KEY );
+  eeStoreString( shcHost, DATA_POS_EMONCMS_HOST );
+  eeStoreString( shcPort, DATA_POS_EMONCMS_PORT );
+  eeStoreString( shcUrl, DATA_POS_EMONCMS_URL );
+  eeStoreString( shcFeedFmt, DATA_POS_EMONCMS_FEED_FMT );
+//
+#endif // USE_WEBAPI_SHC
+//
+
   return( eeValidate() );
 }
+//
+// calculate position in EEPROM of record with given number
+//
+int eeRecordOffset( int recno )
+{
+  int retVal = -1;
+
+  if( recno > 0 && recno < MAX_DS19B20_ENTRIES )
+  {
+    retVal = DATA_POS_DS18B20_TBL_BEGIN;
+
+    retVal += (LEN_DS18B20_SENSOR_RECORD * recno );
+  }
+  return( retVal );
+}
+//
+// calculate position in EEPROM of validation flag of a record
+//
+int eeValidationFlagOffset( int recno )
+{
+  int retVal = -1;
+
+// DATA_LEN_VALIDATION_FLAG
+
+  return( retVal );
+}
+//
+// calculate position in EEPROM of sensor id of a record
+//
+int eeSensorIdOffset( int recno )
+{
+  int retVal = -1;
+
+// DATA_LEN_SENSOR_ID
+
+  return( retVal );
+}
+//
+// calculate position in EEPROM of feeder id of a record
+//
+int eeFeederIdOffset( int recno )
+{
+  int retVal = -1;
+
+// DATA_LEN_SENSOR_FEEDER_ID
+
+  return( retVal );
+}
+//
+// calculate position in EEPROM of name of a sensor
+//
+int eeSensorNameOffset( int recno )
+{
+  int retVal = -1;
+
+// DATA_LEN_SENSOR_NAME
+
+  return( retVal );
+}
+
 //
 // ************************************************************************
 // RESTART the ESP ... trial an error phase to this feature
@@ -548,7 +768,33 @@ void espRestart()
 {
   ESP.restart();
 }
+//
+// ************************************************************************
+// functions for SD card support
+// ************************************************************************
+//
+#ifdef SD_SUPPORT
+//
+// check for valid sd card
+//
+bool validateCard( void )
+{
+  bool retVal = false;
+  String pathStr = SERVER_ROOT;
 
+  if( SD.exists(pathStr.c_str()) )
+  {
+    pathStr += "/";
+    pathStr += CHECKSUM_FILE;
+    if( SD.exists(pathStr.c_str()) )
+    {
+      retVal = true;
+    }
+  }
+
+  return( retVal );
+}
+#endif // SD_SUPPORT
 //
 // ************************************************************************
 // functions related to EMONCMS ( e.g. get feed url )
@@ -578,8 +824,10 @@ void feed2EMONCMS()
   Serial.print("], port is ");
   Serial.println(emoncmsPort.toInt());
 
+#ifdef USE_DHT
   /* 4 is mininum width, 2 is precision; float value is copied onto str_temp*/
   dtostrf(dhtHumidity, 4, 2, str_temp);  
+#endif // USE_DHT
 
   memset(urlBuffer, '\0', sizeof(urlBuffer));
   sprintf(urlBuffer, "%s", emoncmsUrl.c_str());
@@ -642,7 +890,6 @@ void feed2EMONCMS()
 }
 
 
-
 //
 // ************************************************************************
 // setup module ...
@@ -656,9 +903,33 @@ void setup()
   // startup serial console ...
   Serial.begin(SERIAL_BAUD);
   delay(10);
- 
+
+#ifdef SD_SUPPORT
+  Serial.print("\nInitializing SD card...");
+  if (!SD.begin(SPI_CHIPSEL)) 
+  {
+    Serial.println("initialization failed!");
+    hasSD = false;
+  }
+  else
+  {
+    Serial.println("... initialization done.");
+    Serial.print("Validating SD card ...");
+    if( (hasSD = validateCard()) )
+    {
+      Serial.println("... SD card is ok.");
+      hasSD = true;
+    }
+    else
+    {
+      Serial.println("... invalid SD card.");
+      hasSD = false;
+    }
+  }
+#endif // SD_SUPPORT
+
   // prepare access to EEPROM 
-  EEPROM.begin(EEPROM_BLOCK_SIZE);
+  EEPROM.begin(EEPROM_SIZE);
 
   // note: If you want to read ssid and password from EEPROM, just change
   //       n_ssid to ssid and n_password to password.
@@ -686,6 +957,10 @@ void setup()
 #ifdef USE_DHT
   dht.begin();           // initialize temperature sensor
 #endif // USE_DHT
+
+#ifdef USE_DS18B20  
+  DS18B20.begin();
+#endif // USE_DS18B20
 
 #ifdef USE_WIFICLIENT
   Serial.println();
@@ -728,6 +1003,10 @@ void setup()
 #ifdef USE_WEBAPI_EMONCMS
   server.on("/emoncms", feed2EMONCMS);
 #endif // USE_WEBAPI_EMONCMS
+//
+#ifdef USE_WEBAPI_SHC
+  server.on("/shc", feed2EMONCMS);
+#endif // USE_WEBAPI_SHC
 
 #ifdef USE_WWWSERVER
   // start www-server
@@ -757,12 +1036,12 @@ void handleAdminPage()
   
   String n_ssid = "";
   String n_password = "";
-  String n_emoncmsReadApiKey = "";
-  String n_emoncmsWriteApiKey = "";
-  String n_emoncmsHost = "";
-  String n_emoncmsPort = "";
-  String n_emoncmsUrl = "";
-  String n_emoncmsFeedFmt = "";
+  String n_ReadApiKey = "";
+  String n_WriteApiKey = "";
+  String n_Host = "";
+  String n_Port = "";
+  String n_Url = "";
+  String n_FeedFmt = "";
 
   Serial.println("AdminIndex page");
 
@@ -837,6 +1116,90 @@ void handleAdminPage()
 //
 #endif // USE_WEBAPI_EMONCMS
 //
+//
+#ifdef USE_WEBAPI_SHC
+//
+    pageContent +=     "<label>SHC read API key: </label>";
+    pageContent +=      "<input name='" + String(FORM_DATAFIELD_NAME_SHC_RDKEY) +
+                         "' value=" + shcReadApiKey + " length=" +
+                         String(LEN_SHC_READAPI_KEY_MAX) + "> (max. " +
+                         String(LEN_SHC_READAPI_KEY_MAX) + " chars)";
+    pageContent +=      "<br>";
+//
+    pageContent +=     "<label>SHC write API key: </label>";
+    pageContent +=      "<input name='" + String(FORM_DATAFIELD_NAME_SHC_WRKEY) +
+                         "' value=" + shcWriteApiKey + " length=" +
+                         String(LEN_SHC_WRITEAPI_KEY_MAX) + "> (max. " +
+                         String(LEN_SHC_WRITEAPI_KEY_MAX) + " chars)";
+    pageContent +=      "<br>";
+//
+    pageContent +=     "<label>SHC host: </label>";
+    pageContent +=      "<input name='" + String(FORM_DATAFIELD_NAME_SHC_HOST) +
+                         "' value=" + shcHost + " length=" +
+                         String(LEN_SHC_HOST_MAX) + "> (max. " +
+                         String(LEN_SHC_HOST_MAX) + " chars)";
+    pageContent +=      "<br>";
+//
+    pageContent +=     "<label>SHC port: </label>";
+    pageContent +=      "<input name='" + String(FORM_DATAFIELD_NAME_SHC_PORT) +
+                         "' value=" + shcPort + " length=" +
+                         String(LEN_SHC_PORT_MAX) + "> (max. " +
+                         String(LEN_SHC_PORT_MAX) + " chars)";
+    pageContent +=      "<br>";
+//
+    pageContent +=     "<label>SHC feeder URL: </label>";
+    pageContent +=      "<input name='" + String(FORM_DATAFIELD_NAME_SHC_URL) +
+                         "' value=" + shcUrl + " length=" +
+                         String(LEN_SHC_URL_MAX) + "> (max. " +
+                         String(LEN_SHC_URL_MAX) + " chars)";
+    pageContent +=      "<br>";
+//
+    pageContent +=     "<label>SHC feeder format: </label>";
+    pageContent +=      "<input name='" + String(FORM_DATAFIELD_NAME_SHC_FORMAT) +
+                        "' value=" + shcFeedFmt + " length=" +
+                         String(LEN_SHC_FEED_FMT_MAX) + "> (max. " +
+                         String(LEN_SHC_FEED_FMT_MAX) + " chars)";
+    pageContent +=      "<br>";
+//
+#endif // USE_WEBAPI_SHC
+//
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     pageContent +=      "<input type='submit'>";
     pageContent +=   "</form>";
@@ -867,23 +1230,37 @@ void handleAdminPage()
 //
 #ifdef USE_WEBAPI_EMONCMS
 //
-        n_emoncmsReadApiKey = server.arg(FORM_DATAFIELD_NAME_EMON_RDKEY);
-        n_emoncmsWriteApiKey = server.arg(FORM_DATAFIELD_NAME_EMON_WRKEY);
-        n_emoncmsHost = server.arg(FORM_DATAFIELD_NAME_EMON_HOST);
-        n_emoncmsPort = server.arg(FORM_DATAFIELD_NAME_EMON_PORT);
-        n_emoncmsUrl = server.arg(FORM_DATAFIELD_NAME_EMON_URL);
-        n_emoncmsFeedFmt = server.arg(FORM_DATAFIELD_NAME_EMON_FORMAT);
+        n_ReadApiKey = server.arg(FORM_DATAFIELD_NAME_EMON_RDKEY);
+        n_WriteApiKey = server.arg(FORM_DATAFIELD_NAME_EMON_WRKEY);
+        n_Host = server.arg(FORM_DATAFIELD_NAME_EMON_HOST);
+        n_Port = server.arg(FORM_DATAFIELD_NAME_EMON_PORT);
+        n_Url = server.arg(FORM_DATAFIELD_NAME_EMON_URL);
+        n_FeedFmt = server.arg(FORM_DATAFIELD_NAME_EMON_FORMAT);
 //
 #endif // USE_WEBAPI_EMONCMS
 //
+
+//
+#ifdef USE_WEBAPI_SHC
+//
+        n_ReadApiKey = server.arg(FORM_DATAFIELD_NAME_SHC_RDKEY);
+        n_WriteApiKey = server.arg(FORM_DATAFIELD_NAME_SHC_WRKEY);
+        n_Host = server.arg(FORM_DATAFIELD_NAME_SHC_HOST);
+        n_Port = server.arg(FORM_DATAFIELD_NAME_SHC_PORT);
+        n_Url = server.arg(FORM_DATAFIELD_NAME_SHC_URL);
+        n_FeedFmt = server.arg(FORM_DATAFIELD_NAME_SHC_FORMAT);
+//
+#endif // USE_WEBAPI_SHC
+//
+
         if (n_ssid.length() > 0 && 
             n_password.length() > 0 &&
-            n_emoncmsReadApiKey.length() > 0 && 
-            n_emoncmsWriteApiKey.length() > 0 &&
-            n_emoncmsHost.length() > 0 &&
-            n_emoncmsPort.length() > 0 &&
-            n_emoncmsUrl.length() > 0 &&
-            n_emoncmsFeedFmt.length() > 0 )
+            n_ReadApiKey.length() > 0 && 
+            n_WriteApiKey.length() > 0 &&
+            n_Host.length() > 0 &&
+            n_Port.length() > 0 &&
+            n_Url.length() > 0 &&
+            n_FeedFmt.length() > 0 )
         {
 
           //
@@ -894,15 +1271,29 @@ void handleAdminPage()
 //
 #ifdef USE_WEBAPI_EMONCMS
 //
-        eeStoreString( n_emoncmsReadApiKey, DATA_POS_EMONCMS_READAPI_KEY );
-        eeStoreString( n_emoncmsWriteApiKey, DATA_POS_EMONCMS_WRITEAPI_KEY );
-        eeStoreString( n_emoncmsHost, DATA_POS_EMONCMS_HOST );
-        eeStoreString( n_emoncmsPort, DATA_POS_EMONCMS_PORT );
-        eeStoreString( n_emoncmsUrl, DATA_POS_EMONCMS_URL );
-        eeStoreString( n_emoncmsFeedFmt, DATA_POS_EMONCMS_FEED_FMT );
+        eeStoreString( n_ReadApiKey, DATA_POS_EMONCMS_READAPI_KEY );
+        eeStoreString( n_WriteApiKey, DATA_POS_EMONCMS_WRITEAPI_KEY );
+        eeStoreString( n_Host, DATA_POS_EMONCMS_HOST );
+        eeStoreString( n_Port, DATA_POS_EMONCMS_PORT );
+        eeStoreString( n_Url, DATA_POS_EMONCMS_URL );
+        eeStoreString( n_FeedFmt, DATA_POS_EMONCMS_FEED_FMT );
 //
 #endif // USE_WEBAPI_EMONCMS
 //
+
+//
+#ifdef USE_WEBAPI_SHC
+//
+        eeStoreString( n_ReadApiKey, DATA_POS_SHC_READAPI_KEY );
+        eeStoreString( n_WriteApiKey, DATA_POS_SHC_WRITEAPI_KEY );
+        eeStoreString( n_Host, DATA_POS_SHC_HOST );
+        eeStoreString( n_Port, DATA_POS_SHC_PORT );
+        eeStoreString( n_Url, DATA_POS_SHC_URL );
+        eeStoreString( n_FeedFmt, DATA_POS_SHC_FEED_FMT );
+//
+#endif // USE_WEBAPI_SHC
+//
+
           eeValidate();
        
           pageContent = "<!DOCTYPE HTML>\r\n";
@@ -985,12 +1376,17 @@ void loop()
   // check for next read interval has reached
   if( (millis() - lastMillis) >= DS18B20_READINTVAL )
   {
-    lastMillis = millis();
+//    lastMillis = millis();
     DS18B20.requestTemperatures();
-    ds18b20Temp = DS18B20.getTempCByIndex(0);
-    // info output to serial console ...
-    Serial.print("Temperature: ");
-    Serial.println(ds18b20Temp);
+
+    for( int i = 0; i < DS18B20.getDeviceCount(); i++ )
+    {
+      ds18b20Temp = DS18B20.getTempCByIndex(i);
+      // info output to serial console ...
+      Serial.print("Temperature: ");
+      Serial.println(ds18b20Temp);
+    }
+    lastMillis = millis();
   }
 #endif // USE_DS18B20
 
