@@ -151,6 +151,10 @@
 // include necessary lib header
 // ************************************************************************
 //
+#ifdef USE_LOGGING
+#include "SimpleLog.h"
+#endif //
+//
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 
@@ -303,7 +307,7 @@
 // change to your SSID 
 String ssid = "SSID";
 // change to your passphrase
-String password = "PASSPHRASE";
+String password = "YOUR-PASSWD";
 //
 // ************************************************************************
 // further global stuff
@@ -313,19 +317,7 @@ String password = "PASSPHRASE";
 //
 #ifdef USE_LOGGING
 //
-#define LOGBUFFER_SIZE       80
-//
-char logBuffer[LOGBUFFER_SIZE];
-//
-// several log levels to increase/decrease loudness
-#define LOGLEVEL_QUIET        0
-#define LOGLEVEL_CRITICAL     1
-#define LOGLEVEL_ERROR        2
-#define LOGLEVEL_WARNING      4
-#define LOGLEVEL_DEBUG        8
-#define LOGLEVEL_INFO        16
-#
-int logLevel;
+SimpleLog Logger;
 //
 #endif // USE_LOGGING
 //
@@ -562,18 +554,11 @@ int eeStoreFieldLength( char* len, int dataIndex )
 {
   int retVal = 0;
 
-  Serial.print("write LEN byte [");
-  Serial.print(len[0],HEX);
-  Serial.print("] to pos ");
-  Serial.println(dataIndex);
+  Logger.Log(LOGLEVEL_DEBUG,"write LEN byte [%x] to pos %d", len[0], dataIndex);
   
   EEPROM.write(dataIndex, len[0]);
 
-  Serial.print("write LEN byte [");
-  Serial.print(len[1],HEX);
-  Serial.print("] to pos ");
-  Serial.println(dataIndex+1);
-  
+  Logger.Log(LOGLEVEL_DEBUG,"write LEN byte [%x] to pos %d", len[1], dataIndex+1);
   
   EEPROM.write(dataIndex+1, len[1]);
 
@@ -588,17 +573,11 @@ int eeRestoreFieldLength( char* len, int dataIndex )
 
   len[0] = EEPROM.read(dataIndex);
 
-  Serial.print("got LEN byte [");
-  Serial.print(len[0],HEX);
-  Serial.print("] from pos ");
-  Serial.println(dataIndex);
+  Logger.Log(LOGLEVEL_DEBUG,"got LEN byte [%x] from pos %d", len[0], dataIndex);
 
   len[1] = EEPROM.read(dataIndex+1);
 
-  Serial.print("got LEN byte [");
-  Serial.print(len[1],HEX);
-  Serial.print("] from pos ");
-  Serial.println(dataIndex+1);  
+  Logger.Log(LOGLEVEL_DEBUG,"got LEN byte [%x] from pos %d", len[1], dataIndex+1);
 
   return(retVal);
 }
@@ -614,8 +593,7 @@ int eeStoreBytes( const char* data, short len, int dataIndex )
   for (int i = 0; i < len; ++i)
   {
     EEPROM.write(dataIndex + LEN_TRAILING_LENGTH + i, data[i]);
-    Serial.print("Wrote: ");
-    Serial.println(data[i]); 
+    Logger.Log(LOGLEVEL_DEBUG,"Wrote: %x", data[i]); 
   }
 
   return(retVal);
@@ -640,15 +618,11 @@ int eeRestoreString( String& data, int dataIndex, int maxLen )
   short len = 0;
   char c;
   
-  Serial.print("restore data from eeprom: Address is [");
-  Serial.print(dataIndex);
-  Serial.print("] - maxlen = ");
-  Serial.println(maxLen);
+  Logger.Log(LOGLEVEL_DEBUG,"restore data from eeprom: Address is [%d] - maxlen = %d", dataIndex, maxLen);
 
   eeRestoreFieldLength( (char*) &len, dataIndex );
 
-  Serial.print("len = ");
-  Serial.println(len);
+  Logger.Log(LOGLEVEL_DEBUG,"len = %d", len);
 
   if( len > 0 )
   {
@@ -656,11 +630,11 @@ int eeRestoreString( String& data, int dataIndex, int maxLen )
     for( int i=0; i < len && i < maxLen; i++ )
     {
       c = EEPROM.read(dataIndex + LEN_TRAILING_LENGTH + i);
-      Serial.print(c);
+      Logger.Log(LOGLEVEL_DEBUG,"%c", c);
       data += c;
     }
   }
-  Serial.println(" - done!");
+  Logger.Log(LOGLEVEL_DEBUG," - done!");
     
 
   return(retVal);
@@ -676,8 +650,7 @@ bool eeIsValid()
   if( (magicByte = EEPROM.read( DATA_POS_MAGIC )) !=  EEPROM_MAGIC_BYTE )
   {
     retVal = false;
-    Serial.print("wrong magic: ");
-    Serial.println( magicByte );
+    Logger.Log(LOGLEVEL_DEBUG,"wrong magic: %x", magicByte);
   }
 
   return(retVal);
@@ -846,11 +819,10 @@ void feed2EMONCMS()
 // emoncmsUrl
 // emoncmsFeedFmt
 
-  Serial.println();
-  Serial.print("try to connect to [");
-  Serial.print(emoncmsHost.c_str());
-  Serial.print("], port is ");
-  Serial.println(emoncmsPort.toInt());
+  Logger.Log(LOGLEVEL_DEBUG,"try to connect to [");
+  Logger.Log(LOGLEVEL_DEBUG,"%s", emoncmsHost.c_str());
+  Logger.Log(LOGLEVEL_DEBUG,"], port is ");
+  Logger.Log(LOGLEVEL_DEBUG,"%d", emoncmsPort.toInt());
 
 #ifdef USE_DHT
   /* 4 is mininum width, 2 is precision; float value is copied onto str_temp*/
@@ -861,8 +833,8 @@ void feed2EMONCMS()
   sprintf(urlBuffer, "%s", emoncmsUrl.c_str());
   sprintf(&urlBuffer[strlen(urlBuffer)], emoncmsFeedFmt.c_str(), emoncmsWriteApiKey.c_str(), 987, str_temp);
 
-  Serial.print("feed url is:");
-  Serial.println(String(urlBuffer));
+  Logger.Log(LOGLEVEL_DEBUG,"feed url is:");
+//  Logger.Log(LOGLEVEL_DEBUG,"%s", String(urlBuffer));
 
   // configure traged server and url
   http.begin(emoncmsHost.c_str(), emoncmsPort.toInt(), String(urlBuffer));
@@ -872,13 +844,13 @@ void feed2EMONCMS()
   if(httpCode) 
   {
     // HTTP header has been send and Server response header has been handled
-    Serial.printf("GET... code: %d\n", httpCode);
+//    Logger.Logf("GET... code: %d\n", httpCode);
 
     // file found at server
     if(httpCode == 200) 
     {
       String payload = http.getString();
-      Serial.println(payload);
+//      Logger.Log(LOGLEVEL_DEBUG,payload);
       server.send(200, "text/html", payload); 
 
       StaticJsonBuffer<200> jsonBuffer;
@@ -887,16 +859,15 @@ void feed2EMONCMS()
       bool success       = root["success"];
       const char* infoMsg = root["message"];
 
-      Serial.println();
-      Serial.print("result is successfully [");
-      Serial.print(success);
-      Serial.print("] ... message from server: ");
-      Serial.print(infoMsg);
+      Logger.Log(LOGLEVEL_DEBUG,"result is successfully [");
+//      Logger.Log(LOGLEVEL_DEBUG,success);
+      Logger.Log(LOGLEVEL_DEBUG,"] ... message from server: ");
+      Logger.Log(LOGLEVEL_DEBUG, "%s", infoMsg);
 
      } 
      else 
      {
-       Serial.print("GET... failed\n");
+       Logger.Log(LOGLEVEL_DEBUG,"GET... failed\n");
        String payload = "<!DOCTYPE HTML>\r\n";
        payload += "<html></p>";
        payload += "<br>call to feed API failed!<br>";
@@ -906,7 +877,7 @@ void feed2EMONCMS()
    }
    else
    {
-     Serial.print("send header... failed\n");
+     Logger.Log(LOGLEVEL_DEBUG,"send header... failed\n");
      String payload = "<!DOCTYPE HTML>\r\n";
      payload += "<html></p>";
      payload += "<br>send GET header failed!<br>";
@@ -928,31 +899,33 @@ void setup()
   String n_ssid = "";
   String n_password = "";
 
-  logLevel = LOGLEVEL_ERROR;
+//  logLevel = LOGLEVEL_ERROR;
 
   // startup serial console ...
   Serial.begin(SERIAL_BAUD);
   delay(10);
 
+  Logger.Init(LOGLEVEL_DEBUG, &Serial);
+
 #ifdef SD_SUPPORT
-  Serial.print("\nInitializing SD card...");
+  Logger.Log(LOGLEVEL_DEBUG, "\nInitializing SD card...");
   if (!SD.begin(SPI_CHIPSEL)) 
   {
-    Serial.println("initialization failed!");
+    Logger.Log(LOGLEVEL_DEBUG, "initialization failed!\n");
     hasSD = false;
   }
   else
   {
-    Serial.println("... initialization done.");
-    Serial.print("Validating SD card ...");
+    Logger.Log(LOGLEVEL_DEBUG,LOGLEVEL_DEBUG, "... initialization done.\n");
+    Logger.Log(LOGLEVEL_DEBUG, "Validating SD card ...");
     if( (hasSD = validateCard()) )
     {
-      Serial.println("... SD card is ok.");
+      Logger.Log(LOGLEVEL_DEBUG,"... SD card is ok.");
       hasSD = true;
     }
     else
     {
-      Serial.println("... invalid SD card.");
+      Logger.Log(LOGLEVEL_DEBUG,"... invalid SD card.");
       hasSD = false;
     }
   }
@@ -967,22 +940,19 @@ void setup()
   //       contents in the next future
   if( eeIsValid() )
   {
-    Serial.println("eeprom content is valid");
+    Logger.Log(LOGLEVEL_DEBUG,"eeprom content is valid");
     eeRestoreString( n_ssid, DATA_POS_SSID, LEN_SSID_MAX );
     eeRestoreString( n_password, DATA_POS_PASSWORD, LEN_PASSWORD_MAX );
   }
   else
   {
-    Serial.println("INVALID eeprom content!");
+    Logger.Log(LOGLEVEL_DEBUG,"INVALID eeprom content!");
     eeWipe();
-    Serial.println("EEPROM cleared!");
+    Logger.Log(LOGLEVEL_DEBUG,"EEPROM cleared!");
   }
 
-  Serial.print("ssid from eeprom is ");
-  Serial.println(n_ssid);
-
-  Serial.print("password from eeprom is ");
-  Serial.println(n_password);
+  Logger.Log(LOGLEVEL_DEBUG, "ssid from eeprom is %s", n_ssid.c_str() );
+  Logger.Log(LOGLEVEL_DEBUG, "password from eeprom is %s", n_password.c_str() );
 
 #ifdef USE_DHT
   dht.begin();           // initialize temperature sensor
@@ -993,9 +963,7 @@ void setup()
 #endif // USE_DS18B20
 
 #ifdef USE_WIFICLIENT
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
+  Logger.Log(LOGLEVEL_DEBUG,"Connecting to %s\n", ssid.c_str() );
    
   // Set mode to station
   WiFi.mode(WIFI_STA);
@@ -1010,11 +978,11 @@ void setup()
   while (WiFi.status() != WL_CONNECTED) 
   {
     delay(500);
-    Serial.print(".");
+//    Logger.Log(LOGLEVEL_DEBUG,".");
   }
 
-  Serial.println("");
-  Serial.println("WiFi connected");
+  Logger.Log(LOGLEVEL_DEBUG,"");
+  Logger.Log(LOGLEVEL_DEBUG,"WiFi connected");
 #endif // USE_WIFICLIENT
    
   // that's a quite funny feature of the ESP8266WebServer-class
@@ -1030,6 +998,7 @@ void setup()
 
   server.on("/", handleIndexPage);
   server.on("/admin", handleAdminPage);
+  server.on("/sensors", handleSensorPage);
 #ifdef USE_WEBAPI_EMONCMS
   server.on("/emoncms", feed2EMONCMS);
 #endif // USE_WEBAPI_EMONCMS
@@ -1041,15 +1010,15 @@ void setup()
 #ifdef USE_WWWSERVER
   // start www-server
   server.begin();
-  Serial.println("Webserver started");
+  Logger.Log(LOGLEVEL_DEBUG,"Webserver started");
  
 // #if defined(USE_WIFICLIENT) || defined(USE_WWWSERVER)
 
   // Print the IP address
-  Serial.print("Webserver URL is: ");
-  Serial.print("http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("/");
+  Logger.Log(LOGLEVEL_DEBUG,"Webserver URL is: ");
+  Logger.Log(LOGLEVEL_DEBUG,"http://");
+//  Logger.Log(LOGLEVEL_DEBUG,WiFi.localIP());
+  Logger.Log(LOGLEVEL_DEBUG,"/");
 #endif // USE_WWWSERVER
     
 }
@@ -1058,6 +1027,108 @@ void setup()
 // ************************************************************************
 // page handling ...
 // ************************************************************************
+
+void handleSensorPage()
+{
+  String n_sensorId = "Sensor xx";
+  String n_feederId = "2";
+  String n_sensorName = "Ich habe einen Namen";
+
+  static int pageArgs = 0;
+
+  if( server.method() == SERVER_METHOD_GET )
+  {
+    // form was requested initially
+    // set input fields to empty strings
+    pageContent = "<!DOCTYPE HTML>\r\n";
+    pageContent += "<html></p>";
+    pageContent +=   "<form method='post' action='sensors'>";
+
+    for( int i = 0; i < MAX_DS19B20_ENTRIES; i++ )
+    {
+      n_sensorId = "Sensor-"+String(i);
+//
+      pageContent +=     "<label>Id: </label>";
+      pageContent +=      "<input name='id_" + n_sensorId + 
+                           "' value=" + n_sensorId + " length=" +
+                           String(LEN_DS18B20_ID_MAX) + "> (max. " +
+                           String(LEN_DS18B20_ID_MAX) + " chars)";
+      pageContent +=      "<br>";
+//
+      pageContent +=     "<label>Feeder-Id: </label>";
+      pageContent +=      "<input name='feederId_" + n_sensorId +
+                           "' value=" + n_feederId + " length=" +
+                           String(LEN_DS18B20_FEEDER_ID_MAX) + "> (max. " +
+                           String(LEN_DS18B20_FEEDER_ID_MAX);
+      pageContent +=      "<br>";
+//
+      pageContent +=     "<label>Sensor-Bezeichnung: </label>";
+      pageContent +=      "<input name='name_" + n_sensorId +
+                           "' value=" + n_sensorName + " length=" +
+                           String(LEN_DS18B20_NAME_MAX) + "> (max. " +
+                           String(LEN_DS18B20_NAME_MAX) ;
+      pageContent +=      "<br>";
+//
+
+      pageArgs += 3;
+
+    } // end for i < MAX_DS19B20_ENTRIES
+
+    pageContent +=      "<input type='submit'>";
+    pageContent +=   "</form>";
+    pageContent += "</html>";
+    server.send(200, "text/html", pageContent);  
+  }
+  else
+  {
+    if( server.method() == SERVER_METHOD_POST )
+    {
+      // form contains user input and was postet
+      // to server
+
+      // reset page content
+      pageContent = "";
+
+      if( server.args() == pageArgs )
+      {
+
+          pageContent = "<!DOCTYPE HTML>\r\n";
+          pageContent += "<html></p>";
+          pageContent += "<br>Settings stored<br>";
+          pageContent += "</html>";
+          server.send(200, "text/html", pageContent); 
+
+           if(0)
+            { 
+            }
+            else
+            {
+              pageContent = "<!DOCTYPE HTML>\r\n";
+              pageContent += "<html></p>";
+              pageContent += "<br>empty strings for ssid/password are not allowed!<br>";
+              pageContent += "</html>";
+              server.send(200, "text/html", pageContent);  
+            }
+      }
+      else
+      {
+        pageContent = "<!DOCTYPE HTML>\r\n";
+        pageContent += "<html></p>";
+        pageContent += "<br>too few arguments<br>";
+        pageContent += "</html>";
+        server.send(200, "text/html", pageContent);  
+      }
+    }
+  }
+}
+
+
+
+
+
+
+
+
 //
 // handle /admin page containing a form with a submit button
 //
@@ -1073,10 +1144,10 @@ void handleAdminPage()
   String n_Url = "";
   String n_FeedFmt = "";
 
-  Serial.println("AdminIndex page");
+  Logger.Log(LOGLEVEL_DEBUG,"AdminIndex page");
 
-  Serial.println( server.method() );
-  Serial.println( server.args() );
+  Logger.Log(LOGLEVEL_DEBUG, "%s", server.method() );
+  Logger.Log(LOGLEVEL_DEBUG, "%s", server.args() );
 
   if( server.method() == SERVER_METHOD_GET )
   {
@@ -1194,43 +1265,6 @@ void handleAdminPage()
 #endif // USE_WEBAPI_SHC
 //
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     pageContent +=      "<input type='submit'>";
     pageContent +=   "</form>";
     pageContent += "</html>";
@@ -1250,9 +1284,9 @@ void handleAdminPage()
       {
         for(int i = 0; i < server.args(); i++ )
         {
-          Serial.print( server.argName(i) );
-          Serial.print( " = " );
-          Serial.println( server.arg(i) );
+//          Logger.Log(LOGLEVEL_DEBUG, "%s", server.argName(i) );
+          Logger.Log(LOGLEVEL_DEBUG, " = " );
+//          Logger.Log(LOGLEVEL_DEBUG, "%s",server.arg(i) );
         }
 
         n_ssid = server.arg(FORM_DATAFIELD_NAME_SSID);
@@ -1358,7 +1392,7 @@ void handleAdminPage()
 //
 void handleIndexPage()
 {
-  Serial.println("Index page");
+  Logger.Log(LOGLEVEL_DEBUG,"Index page");
 
   // send response to client
   pageContent  = "<!DOCTYPE HTML>\r\n<html>";
@@ -1413,8 +1447,7 @@ void loop()
     {
       ds18b20Temp = DS18B20.getTempCByIndex(i);
       // info output to serial console ...
-      Serial.print("Temperature: ");
-      Serial.println(ds18b20Temp);
+      Logger.Log(LOGLEVEL_DEBUG,"Temperature: %f", ds18b20Temp);
     }
     lastMillis = millis();
   }
@@ -1428,16 +1461,13 @@ void loop()
     dhtHumidity = dht.readHumidity();          // Read humidity (percent)
     dhtTemp = dht.readTemperature(DHT_DEGREE_UNIT);     // Read temperature as Fahrenheit
     // info output to serial console ...
-    Serial.print("Temperature: ");
-    Serial.println(dhtTemp);
-    Serial.print("Humidity: ");
-    Serial.println(dhtHumidity);
+    Logger.Log(LOGLEVEL_DEBUG,"Temperature: %f - Humidity: %f", dhtTemp, dhtHumidity);
   }
 
   // Check if any reads failed and exit early (to try again).
   if (isnan(dhtHumidity) || isnan(dhtTemp)) 
   {
-    Serial.println("Failed to read from DHT sensor!");
+    Logger.Log(LOGLEVEL_DEBUG,"Failed to read from DHT sensor!");
   }
 #endif // USE_DHT
 
