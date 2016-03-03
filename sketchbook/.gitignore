@@ -13,6 +13,7 @@ ESP8266_SensorNode/
 SDWebServer/
 ESP8266_SD_test/
 ESP8266_SDWebServer/
+ESP8266_LCD/
 ESPEasy/
 ESP8266_BMP085/
 *.sh
