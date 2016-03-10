@@ -17,6 +17,9 @@ ESP8266_LCD/
 ESPEasy/
 ESP8266_BMP085/
 ESP8266_BMP_ON_LCD/
+BasicOTA/
+WebUpdate/
+WebUpdater/
 *.sh
 *.[oa]
 *.swp
