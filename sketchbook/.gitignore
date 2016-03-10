@@ -20,6 +20,8 @@ ESP8266_BMP_ON_LCD/
 BasicOTA/
 WebUpdate/
 WebUpdater/
+httpUpdate/
+OTALeds/
 *.sh
 *.[oa]
 *.swp
