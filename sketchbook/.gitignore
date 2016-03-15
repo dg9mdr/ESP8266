@@ -17,10 +17,10 @@ ESP8266_LCD/
 ESPEasy/
 ESP8266_BMP085/
 ESP8266_BMP_ON_LCD/
+Another_OTA/
 BasicOTA/
 WebUpdate/
 WebUpdater/
-httpUpdate/
 OTALeds/
 *.sh
 *.[oa]
