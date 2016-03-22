@@ -22,6 +22,7 @@ BasicOTA/
 WebUpdate/
 WebUpdater/
 OTALeds/
+ESP8266_SensorNode_Split/
 *.sh
 *.[oa]
 *.swp
