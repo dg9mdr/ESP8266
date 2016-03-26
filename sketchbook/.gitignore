@@ -23,6 +23,7 @@ WebUpdate/
 WebUpdater/
 OTALeds/
 ESP8266_SensorNode_Split/
+Blink/
 *.sh
 *.[oa]
 *.swp
