@@ -24,6 +24,7 @@ WebUpdater/
 OTALeds/
 ESP8266_SensorNode_Split/
 Blink/
+ESP8266_Messenger/
 *.sh
 *.[oa]
 *.swp
