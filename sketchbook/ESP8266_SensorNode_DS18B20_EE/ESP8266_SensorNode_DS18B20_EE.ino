@@ -110,9 +110,9 @@
 // set these values to match your network configuration
 // ************************************************************************
 // change to your SSID 
-String ssid = "SSID";
+String ssid = "TP-LINK";
 // change to your passphrase
-String password = "PASSPHRASE";
+String password = "Das_ist_eine_1a_sichere_Passphrase";
 //
 // ************************************************************************
 // global stuff
