@@ -80,6 +80,9 @@ extern "C" {
 //
 #ifdef ESP8266
 #define EEPROM_MAX_SIZE                  4096
+#define EEPROM_WRITE_DELAY               2
+#else
+#define EEPROM_WRITE_DELAY               0
 #endif // ESP8266
 //
 //
@@ -94,12 +97,12 @@ extern "C" {
 // in a later version this may be replaced by a real calculation or
 // mapping 
 //
-#define EEPROM_MAGIC_BYTE              0xb7
+#define EEPROM_MAGIC_BYTE              0x7e
 //
 #define EEPROM_LEADING_LENGTH             2  // means two byte representing 
 //                                           // the real length of the data field
 #define EEPROM_MAXLEN_MAGIC               1
-#define EEPROM_MAXLEN_CRC32              10
+#define EEPROM_MAXLEN_CRC32               4
 //
 #define EEPROM_MAXLEN_BOOLEAN             1
 //
@@ -159,7 +162,7 @@ extern "C" {
 
 // macro to check whether log output is done
 //
-#define NOLOG            (logLevel <= LOGLEVEL_QUIET)
+#define DOLOG            (logLevel > LOGLEVEL_QUIET)
 
 class dsEeprom {
 
@@ -184,14 +187,14 @@ class dsEeprom {
     void setLoglevel( short newValue );
     short getLoglevel( void );
     unsigned char version2Magic( void );
-    unsigned long crc( void );
+    unsigned long crc( int startPos, int length );
     void wipe( void );
     int storeFieldLength( char* len, int dataIndex );
     int restoreFieldLength( char* len, int dataIndex );
     int storeBoolean(  char* data, int dataIndex );
     int restoreBoolean( char *data, int dataIndex );
     int storeRaw( const char* data, short len, int dataIndex );
-    int restoreRaw( String& data, int dataIndex, int len, int maxLen);
+    int restoreRaw( char* data, int dataIndex, int len, int maxLen);
     int storeBytes( const char* data, short len, int dataIndex );
     int restoreBytes( String& data, int dataIndex, int len, int maxLen);
     int storeString( String data, int maxLen, int dataIndex );
