@@ -80,9 +80,6 @@ extern "C" {
 //
 #ifdef ESP8266
 #define EEPROM_MAX_SIZE                  4096
-#define EEPROM_WRITE_DELAY               2
-#else
-#define EEPROM_WRITE_DELAY               0
 #endif // ESP8266
 //
 //

@@ -96,7 +96,6 @@ unsigned long dsEeprom::crc( int startPos, int length )
 
 dsEeprom::dsEeprom( unsigned int newBlockSize, unsigned char newMagic, int newLogLevel )
 {
-  Logger.Init(LOGLEVEL_DEBUG, &Serial);
 
   status = 0;
 
@@ -108,6 +107,8 @@ dsEeprom::dsEeprom( unsigned int newBlockSize, unsigned char newMagic, int newLo
   {
     logLevel = newLogLevel;
   }
+
+  Logger.Init(logLevel, &Serial);
 
 
   if( newBlockSize <= 0 || newBlockSize > EEPROM_MAX_SIZE )
@@ -156,6 +157,8 @@ int dsEeprom::init( unsigned int newBlockSize, unsigned char newMagic, int newLo
     logLevel = newLogLevel;
   }
 
+  Logger.Init(logLevel, &Serial);
+
   if( newBlockSize <= 0 || newBlockSize > EEPROM_MAX_SIZE )
   {
     status |= EE_STATUS_INVALID_SIZE;
@@ -198,7 +201,6 @@ void dsEeprom::wipe( void )
     for( int index = 0; index < blockSize; index++ )
     {
       EEPROM.write( index, '\0' );
-      delay(EEPROM_WRITE_DELAY);
     }
 
 #ifdef ESP8266
@@ -233,7 +235,6 @@ int dsEeprom::storeFieldLength( char* len, int dataIndex )
     }
   
     EEPROM.write(dataIndex, len[0]);
-    delay(EEPROM_WRITE_DELAY);
 
     if( DOLOG )
     {
@@ -241,7 +242,6 @@ int dsEeprom::storeFieldLength( char* len, int dataIndex )
     }
   
     EEPROM.write(dataIndex+1, len[1]);
-    delay(EEPROM_WRITE_DELAY);
 
   }
 
@@ -315,7 +315,6 @@ int dsEeprom::storeBoolean(  char* data, int dataIndex )
             for (int i = 0; i < len; ++i)
             {
                 EEPROM.write(dataIndex + EEPROM_LEADING_LENGTH + i, data[i]);
-               delay(EEPROM_WRITE_DELAY);
                 if( DOLOG )
                 {
                     Logger.Log(LOGLEVEL_DEBUG, " %x", data[i]); 
@@ -404,7 +403,6 @@ int dsEeprom::storeRaw( const char* data, short len, int dataIndex )
         for (int i = 0; i < len; ++i)
         {
             EEPROM.write(dataIndex+i, data[i]);
-            delay(EEPROM_WRITE_DELAY);
 
             if( DOLOG )
             {
@@ -500,7 +498,6 @@ int dsEeprom::storeBytes( const char* data, short len, int dataIndex )
             for (int i = 0; i < len; ++i)
             {
                 EEPROM.write(dataIndex + EEPROM_LEADING_LENGTH + i, data[i]);
-               delay(EEPROM_WRITE_DELAY);
 
                 if( DOLOG )
                 {
@@ -661,7 +658,6 @@ bool dsEeprom::validate()
   if( magic != 0 )
   {
     EEPROM.write( EEPROM_POS_MAGIC, magic );
-    delay(EEPROM_WRITE_DELAY);
     retVal = true;
 
 #ifdef ESP8266
