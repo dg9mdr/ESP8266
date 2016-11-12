@@ -35,7 +35,7 @@ Now we add a BMP085/BMP180 barometric sensor to our sensor-node. All the data is
 ### SimpleHttpUpdate:
 A very useful feature of the ESP-moduls is the capability to update the binary sketch from a web-site and flash is on the fly. Afer a automatically reboot the new software is immediately running on the module.
 
-### *Finally, in the subfolder "libraries" you'll find additional libraries I wrote for the ESP to make life easier. These libraries may work in the arduino-environment, too.*
+### *Finally, in the subfolder "libraries" you'll find additional libraries I wrote for the ESP to make life easier. These libraries are working in the arduino-environment, too.*
 
 
 
