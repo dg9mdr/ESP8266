@@ -4,7 +4,7 @@
 shows, how to connect a 1.8" TFT display (ST7735 controller) to an ESP8266-12 using a SPI connection
 
 ### ESP8266_22TFT:
-this shows, how to connect a 2.2" TFT display (ILI9340 controller) to an ESP8266-12 using a SPI connection. For a german description have a look [to my new blog] (http://dreamshader.bplaced.net/wordpress/?p=21)
+this shows, how to connect a 2.2" TFT display (ILI9340 controller) to an ESP8266-12 using a SPI connection. For a german description have a look ->[**to my new blog**]<-. (http://dreamshader.bplaced.net/wordpress/?p=21)
 
 ### ESP8266_22TFT_DUMMY:
 is a template for a 2.2" TFT (ILI9340 controller) ESP8266-12 system monitoring program
