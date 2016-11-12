@@ -1,4 +1,4 @@
-A brief description of the sketches in this folder:
+## A brief description of the sketches in this folder:
 
 ### ESP8266_18TFT:
 shows, how to connect a 1.8" TFT display (ST7735 controller) to an ESP8266-12 using a SPI connection
@@ -35,5 +35,6 @@ Now we add a BMP085/BMP180 barometric sensor to our sensor-node. All the data is
 ### SimpleHttpUpdate:
 A very useful feature of the ESP-moduls is the capability to update the binary sketch from a web-site and flash is on the fly. Afer a automatically reboot the new software is immediately running on the module.
 
-*** Finally, int the subfolder libraries you'll find additional libraries I wrote to make life easier.
+### Finally, int the subfolder libraries you'll find additional libraries I wrote to make life easier.
+
 
