@@ -1,0 +1,8 @@
+SimpleLog - a library that provides log
+          - output to any stream-class-
+          - object using a printf-like
+          - format string.
+============================================
+SimpleLog 0.9.0 / 11/20/2016
+ * First release
+=========================================

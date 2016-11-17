@@ -1,3 +1,71 @@
+The idea for the dsEeprom-Library was to make my life easier. I did always the same job in several small projects on ESP-modules or for an Arduino: read/write EEPROM content.
+To simplify this, I created this library. Because it is designed for my needs, it may or my not be useful for you.
+
+General:
+To install the library, you may download the zip-file or clone the whole ESP8266 repository.
+If you are interested only in this library, you can get the subfolder using svn:
+
+svn checkout https://github.com/dreamshader/ESP8266/trunk/sketchbook/libraries/dsEeprom
+
+
+
+
+
+
+
+
+dsEeprom( unsigned int blockSize = 0, unsigned char magic = 0x00, int logLevel = LOGLEVEL_QUIET )
+int init( unsigned int blockSize = 0, unsigned char magic = 0x00, int logLevel = LOGLEVEL_QUIET )
+virtual ~dsEeprom()
+short getStatus( void )
+void setBlocksize( unsigned int newSize )
+unsigned int getBlocksize( void )
+void setMagic( short newMagic )
+unsigned char getMagic( void )
+void setLoglevel( short newValue )
+short getLoglevel( void )
+unsigned char version2Magic( void )
+unsigned long crc( int startPos, int length )
+void wipe( void )
+int storeFieldLength( char* len, int dataIndex )
+int restoreFieldLength( char* len, int dataIndex )
+int storeBoolean(  char* data, int dataIndex )
+int restoreBoolean( char *data, int dataIndex )
+int storeRaw( const char* data, short len, int dataIndex )
+int restoreRaw( char* data, int dataIndex, int len, int maxLen)
+int storeBytes( const char* data, short len, int dataIndex )
+int restoreBytes( String& data, int dataIndex, int len, int maxLen)
+int storeString( String data, int maxLen, int dataIndex )
+int restoreString( String& data, int dataIndex, int maxLen )
+bool isValid()
+bool validate()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Jetzt gibt es eine Besonderheit der EEPROM-Library: die Positionen und Längen einige System-Variablen sind bereits vordefiniert. Ihr müsst diese Vorgaben nicht nutzen, ich für meinen Teil fand das Feature einfach praktisch.
 Allerdings decken sich die vordefinierten System-Variablen nicht mit denen, die wir oben festgelegt haben.  In der dsEeprom.h sind die Positionen und Löngen für folgende Systemvariablen vordefiniert:
 [code]
