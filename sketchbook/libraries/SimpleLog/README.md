@@ -31,12 +31,14 @@ void SetLevel(int level = LOGLEVEL_DEBUG);
 
 The loglevel can be modified at any time in your code to increase or reduce the amount of logged information. The following loglevels are defined at this time:
 
+<code>
 #define LOGLEVEL_QUIET        0
 #define LOGLEVEL_CRITICAL     1
 #define LOGLEVEL_ERROR        2
 #define LOGLEVEL_WARNING      4
 #define LOGLEVEL_DEBUG        8
 #define LOGLEVEL_INFO        16
+</code>
 
 If you set the loglevel to LOGLEVEL_QUIET no output will be performed at all. Setting the loglevel to LOGLEVEL_INFO almost all informational data is sent formatted to the assigned output stream.
 Note, that we currently talk about the loglevel for the SimpleLog object that is used to check whether an output has to be performed. Because the defined values are based on power of two, the several level definitions easily can be combined to perform a more selective output.
