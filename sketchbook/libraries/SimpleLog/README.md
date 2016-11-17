@@ -12,23 +12,22 @@ svn checkout https://github.com/dreamshader/ESP8266/trunk/sketchbook/libraries/S
 
 Call the abve command in your sketchbook/libraries folder. Afer a restart of the Arduino-IDE you will be able to use your new logging functions.
 
+Note that this library is currently in development. For some functions the type and/or arguments may change until first release is available. To avoid serious problems I will try to do modifications in a way that existing functions are not or at least barely affected by them. 
 
 ##Description:
 
 The API to a SimpleLog object is quite simple and described in the following:
 
-######SimpleLog() {};
+####SimpleLog() {};
 Creates an instance of SimpleLog that later can be used to format log output. Note, that only creating a SimpleLog-object is insufficient to peform the log functionality. You have to call one of the next two funtions to initialize the object in a correct way.
  
 
-######void Init(int level = LOGLEVEL_DEBUG, Stream *output = NULL);
-######void Begin(int level = LOGLEVEL_DEBUG, Stream *output = NULL);
-
+####void Init(int level = LOGLEVEL_DEBUG, Stream *output = NULL);
+####void Begin(int level = LOGLEVEL_DEBUG, Stream *output = NULL);
 These two funtions do exactly the same and coexist for compatibility reasons only. To activate logging you have to pass a pointer to a valid stream object as an argument. In addition, you may define the amount of data thet will be logged to the stream object. For further information see the SetLevel() function below.
 
 
-######void SetLevel(int level = LOGLEVEL_DEBUG);
-
+####void SetLevel(int level = LOGLEVEL_DEBUG);
 The loglevel can be modified at any time in your code to increase or reduce the amount of logged information. The following loglevels are defined at this time:
 
 * LOGLEVEL_QUIET    as  0
@@ -48,9 +47,7 @@ If you set the loglevel to LOGLEVEL_QUIET no output will be performed at all. Se
 Note, that we currently talk about the loglevel for the SimpleLog object that is used to check whether an output has to be performed. Because the defined values are based on power of two, the several level definitions easily can be combined to perform a more selective output.
 
 
-
-######void Log(int level, char *format, ...);
-
+####void Log(int level, char *format, ...);
 Last but not least this is the real logging function. 
 In level you pass the type of your log-entry. Output is done only if the associated bit is set in the loglevel member of the SimpleLog object.
 It is followed by a printf-like format string that accepts the following format descriptors:
@@ -59,11 +56,9 @@ It is followed by a printf-like format string that accepts the following format 
 
 * %d: output is done as a decimal value
 
-* %x: 
-* %X: output is formatted as hex value
+* %x or %X: output is formatted as hex value
 
-* %b: 
-* %B: output of the value is done in its binary representation
+* %b or %B: output of the value is done in its binary representation
 
 * %f: perform output as a float value
 
