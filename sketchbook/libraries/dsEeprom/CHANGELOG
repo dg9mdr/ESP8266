@@ -2,7 +2,7 @@ dsEeprom - a library that provides extended
          - access to the internal EEPROM
 ============================================
 dsEeprom 0.9.1 / 10/29/2016
- * First release
+ * Initial upload
 =========================================
 dsEeprom 0.9.2 / 11/10/2016
  * fixed bug in restore raw
