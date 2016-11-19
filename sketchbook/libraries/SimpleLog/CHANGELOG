@@ -2,7 +2,16 @@ SimpleLog - a library that provides log
           - output to any stream-class-
           - object using a printf-like
           - format string.
-============================================
-SimpleLog 0.9.0 / 11/20/2016
+=======================================================
+SimpleLog 0.9.0 / 11/17/2016
  * Initial upload
-=========================================
+=======================================================
+SimpleLog 0.9.1 / 11/20/2016
+ * fixed a possible bug in SimpleLog::Log()
+ * changed all functions to return an int value
+ * define the several return values for the functions
+ * add comments to the library functions and header
+   to the source files
+ * create branch to define first release
+=======================================================
+
