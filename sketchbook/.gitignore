@@ -1,4 +1,5 @@
 tmp/
+libraries/
 *.sh
 *.[oa]
 *.swp

@@ -2,7 +2,7 @@
 *.[oa]
 *.swp
 *.log
-
+libraries/
 Konzepte/*/
 Konzepte/*.html
 Fritzing/SensorKapazitiv.fzz
