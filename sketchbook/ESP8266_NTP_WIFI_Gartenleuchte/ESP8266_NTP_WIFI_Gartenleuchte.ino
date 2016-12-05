@@ -96,8 +96,8 @@ bool beQuiet;
 // your network
 //
 #define DEFAULT_UDP_LISTENPORT		8888
-#define DEFAULT_WLAN_SSID               ""
-#define DEFAULT_WLAN_PASSPHRASE         ""
+#define DEFAULT_WLAN_SSID               "TP-LINK"
+#define DEFAULT_WLAN_PASSPHRASE         "Das_ist_eine_1a_sichere_Passphrase"
 #define DEAULT_NTP_SERVERNAME		"us.pool.ntp.org"
 
 #define DEFAULT_USE_DHCP                true
@@ -423,11 +423,11 @@ unsigned int localUDPPort =	DEFAULT_UDP_LISTENPORT;
 // define clock an data pin for iic 
 // ************************************************************************
 //
-//  static int default_sda_pin = 0;
-//  static int default_scl_pin = 2;
+static int default_sda_pin = 2;
+static int default_scl_pin = 0;
 //
-static int default_sda_pin = 4;
-static int default_scl_pin = 5;
+// static int default_sda_pin = 4;
+// static int default_scl_pin = 5;
 //
 //
 // ************************************************************************
@@ -1226,8 +1226,6 @@ void startupActions( void )
   if( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, "nowMinutes is %d\n", nowMinutes );
-
-    Logger.Log(LOGLEVEL_DEBUG, "hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
   }
 
   for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
@@ -1265,9 +1263,6 @@ void startupActions( void )
           }
 
           tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
-
-//  -> (0x01 << i)
-// 1,2,4,8,16,32,64,128
 
           PCF_38.write(i, RELAIS_ON);
 
@@ -1668,8 +1663,7 @@ int check4Action( void )
 
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "check for minute-value: %d\n", nowMinutes );
-    Logger.Log(LOGLEVEL_DEBUG, "hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
+    Logger.Log(LOGLEVEL_DEBUG, "check4Action: check for minute-value: %d\n", nowMinutes );
   }
 
   for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
@@ -1818,8 +1812,7 @@ void loop()
   {
     if( !beQuiet )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "loop: nowMinutes is %d\n", nowMinutes );
-      Logger.Log(LOGLEVEL_DEBUG, "hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
+      Logger.Log(LOGLEVEL_DEBUG, "loop: hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
     }
 
     minutesLastCheck = nowMinutes;
