@@ -18,6 +18,29 @@
 //  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 // ************************************************************************
+//
+// The idea behind this is to connect to serial devices across a WLAN. 
+//
+// To reach this, you may setup one ESP-8266 node as a "COM-Server". 
+// To do so, browse to http://Your.ESP.IP.ADDRESS:8080 
+// You can login to the admin page. Default Password is esp8266. Select
+// COM-Port settings and activate COM-Server (default).
+// After Restart the ESP you can connect any device with serial port
+// to the ESP. Be careful, if you connect Rx/Tx! The ESP is NOT 5V tolerant
+// and may be destroyed, if you don't use a levelshifter to 3V3.
+// Now you may telnet to YOUR.ESP.IP.ADDRESS port 1234. All input is send
+// to the connected device ia rs232. All data the serial device is sending
+// is received over WLAN soo you will see the output.
+// This may be useful for e.g. modems, ...
+// It is possible to setup another ESP as a COM-Client.
+// Configuring is done alike setup in server mode.
+// Now it's possible to connect two serial devices to their rs232 interfaces.
+// Data transfer is done bidirectional.
+// Note, that this is still a WORK IN PROGRESS pre-release ...
+// Have fun
+//
+// ************************************************************************
+//
 // For witty breakout board:
 //   select "NodeMCU 1.0 (ESP-12E Module)" as board in the Arduino IDE 
 //
@@ -29,7 +52,7 @@
 //
 //-------- History -------------------------------------------------
 //
-// 1st version: 
+// 1st version: 12/05/2016 - work in progress pre-release
 // update:
 //
 // ************************************************************************
