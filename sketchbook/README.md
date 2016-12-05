@@ -32,6 +32,14 @@ It's time for a code review, some cosmetic operations and explaining the code. T
 ### ESP8266_SensorNode-Step5:
 Now we add a BMP085/BMP180 barometric sensor to our sensor-node. All the data is sent to a host with EMONCMS as a data storage and graphical reporting solution.
 
+### ESP8266_WIFI_RelaisTimer:
+The module connects to the specified WLAN as a WiFi-client. After that, it requests the current date an time via network time protocol from a specific NTP-server.
+Last step in starting up is to create a http-server listening to a specified port for requests.
+The web server handles a configuration page for up to eight channels. Each channel may be switched on and off on up to two user defined times.
+In addition for each channel there are two flags to allow switching on or off using the http-API.
+There are three modes for each channel. ON and OFF override the user defined times if their check-boxes are active.  AUTO activates the user-defined times for each channel and time that is activated ( checked ).
+These setting information are stored in the EEPROM and restored on every reboot of the module.
+
 ### SimpleHttpUpdate:
 A very useful feature of the ESP-moduls is the capability to update the binary sketch from a web-site and flash is on the fly. Afer a automatically reboot the new software is immediately running on the module.
 
