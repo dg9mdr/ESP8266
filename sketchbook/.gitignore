@@ -19,7 +19,7 @@ ESP8266_ErdfeuchteMessung/
 ESP8266_Gartenleuchten/
 ESP8266_NATIVE_SD/
 ESP8266_SerialOverLAN_BACKUP/
-ESP8266_SerialOverLAN_V2/
+ESP8266_SerialOverWLAN_V2/
 ESP8266_Talk_2_Arduino/
 ESP9266ParseSD/
 HX711Serial/

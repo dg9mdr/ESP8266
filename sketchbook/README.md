@@ -35,6 +35,10 @@ Now we add a BMP085/BMP180 barometric sensor to our sensor-node. All the data is
 ### SimpleHttpUpdate:
 A very useful feature of the ESP-moduls is the capability to update the binary sketch from a web-site and flash is on the fly. Afer a automatically reboot the new software is immediately running on the module.
 
+### ESP8266_SerialOverWLAN:
+With this you can connect two devices with their rs232 interfaces across a WLAN connection. This is a WORK IN PROGRESS pre-release! Be careful ...
+
+
 ### *Finally, in the subfolder "libraries" you'll find additional libraries I wrote for the ESP to make life easier. These libraries are working in the arduino-environment, too.*
 
 
