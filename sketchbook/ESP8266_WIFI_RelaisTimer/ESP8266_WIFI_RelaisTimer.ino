@@ -96,8 +96,8 @@ bool beQuiet;
 // your network
 //
 #define DEFAULT_UDP_LISTENPORT		8888
-#define DEFAULT_WLAN_SSID               "TP-LINK"
-#define DEFAULT_WLAN_PASSPHRASE         "Das_ist_eine_1a_sichere_Passphrase"
+#define DEFAULT_WLAN_SSID               ""
+#define DEFAULT_WLAN_PASSPHRASE         ""
 #define DEAULT_NTP_SERVERNAME		"us.pool.ntp.org"
 
 #define DEFAULT_USE_DHCP                true
