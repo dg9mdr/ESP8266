@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>ESP8266 Settings</title>
+</head>
+<body bgcolor="#00C9FF" text="#FDFF00" link="#FF0200" vlink="#A900FF" alink="#20FF00">
+
+<div align="center"><strong><h1>Change settings for this node</h1></strong></div>
+
+<form action="admin" method="get">
+
+<table align="center">
+<tr>
+	<td> <div align="center">
+		<optgroup label="SSID:">
+	</td>
+	
+	<td><div align="center"><input type="text" name="ssid" value="your_ssid"></div></td>
+	<td><div align="center"></div></td>
+	</optgroup>
+</tr>
+<tr>
+	
+	<td> <div align="center">
+		<optgroup label="Passphrase:">
+	</td>
+	
+	<td><div align="center"><input type="text" name="pass" value="your_passphrase"></div></td>
+	<td><div align="center"></div></td>
+	</optgroup>
+</tr>
+
+<tr>
+	<td> <hr align="center"></td>
+	<td><hr align="center"></td>
+	<td><hr align="center"></td>	
+</tr>
+
+<tr>
+
+	<td> <div align="center">
+		<optgroup label="Receive IP address via dhcp">
+	</td>
+		
+	<td><div align="center"><input type="checkbox" name="usedhcp"></div></td>
+	<td><div align="center"></div></td>
+	</optgroup>
+</tr>
+
+<tr>
+	<td> <hr align="center"></td>
+	<td><hr align="center"></td>
+	<td><hr align="center"></td>
+</tr>
+
+
+
+<tr>
+	
+	<td> <div align="center">
+		<optgroup label="WWW server IP:">
+	</td>		
+	
+	<td><div align="center"><input type="text" name="srvIP" value="192.168.1.111" size="15" maxlength="15"></div></td>
+	<td><div align="center"></div></td>
+	</optgroup>
+</tr>
+
+
+
+<tr>
+	<td> <hr align="center"></td>
+	<td><hr align="center"></td>
+	<td><hr align="center"></td>
+</tr>
+
+<tr>
+	
+	<td> <div align="center">
+		<optgroup label="WWW server port:">
+	</td>		
+	
+	<td><div align="center"><input type="text" name="srvport" value="8080" size="4" maxlength="4"></div></td>
+	<td><div align="center"></div></td>
+	</optgroup>
+</tr>
+
+<tr>
+	<td> <hr align="center"></td>
+	<td><hr align="center"></td>
+	<td><hr align="center"></td>
+</tr>
+
+<tr>
+	
+	<td> <div align="center">
+		<optgroup label="Node name:">
+	</td>		
+	
+	<td><div align="center"><input type="text" name="node" value=""></div></td>
+	<td><div align="center"></div></td>
+	</optgroup>
+</tr>
+
+<tr>
+
+	<td> <div align="center">
+		<optgroup label="Admin password:">
+	</td>
+		
+	<td><div align="center"><input type="text" name="adminpw" value="esp8266"></div></td>
+	<td><div align="center"></div></td>
+	</optgroup>
+</tr>
+
+<tr>
+	<td> <hr align="center"></td>
+	<td><hr align="center"></td>
+	<td><hr align="center"></td>
+</tr>
+
+
+
+</table>
+
+<div align="center">
+<input type="reset" name="rst" value="reset form">
+<input type="submit" name="ok" value="commit settings"> 
+<input type="submit" name="factory" value="factory settings">
+
+<br><br>
+<input type="submit" name="close" value="close">
+<input type="submit" name="com" value="COM port settings">
+<input type="submit" name="restart" value="restart node">
+
+</div><br>
+
+<!-- <hr align="center"><br> -->
+
+</form>
+</body>
+</html>

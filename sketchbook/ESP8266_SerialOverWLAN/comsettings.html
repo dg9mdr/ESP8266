@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>ESP8266 Settings</title>
+</head>
+<body bgcolor="#00C9FF" text="#FDFF00" link="#FF0200" vlink="#A900FF" alink="#20FF00">
+
+<div align="center"><strong><h1>Setup local COM-Port</h1></strong></div>
+
+<form action="admin" method="get">
+
+<table align="center">
+
+<tr>
+	<td> <div align="center">
+		<!-- <optgroup label="Serial over network:"> -->
+		<h5><strong><em>Serial over network: </em></strong></h5>
+	</td>
+	
+	<td> <div align="center">
+		<label>Enable</label>
+		<input type="radio" name="SONStatus" value="ON" unchecked>
+	</td>
+		
+	<td> <div align="center">
+	<label>Disable</label>
+		<input type="radio" name="SONStatus" value="OFF" checked>
+	</td>
+	
+	<td><div align="center"></div></td>
+
+	</optgroup>
+
+</tr>
+
+<tr>
+	<td> <div align="center">
+		<optgroup label="Connection protocol:">
+	</td>
+	
+	<td> <div align="center">
+		<label>UDP</label>
+		<input type="radio" name="protocol" value="UDP" unchecked>
+	</td>
+		
+	<td> <div align="center">
+	<label>TCP</label>
+		<input type="radio" name="protocol" value="TCP" checked>
+	</td>
+	
+	<td><div align="center"></div></td>
+
+	</optgroup>
+
+</tr>
+
+<tr>
+	<td> <div align="center">
+		<optgroup label="Serial type*">
+	</td>
+	
+	<td> <div align="center">
+		<label>Hardware</label>
+		<input type="radio" name="comtype" value="hardware" unchecked>
+	</td>
+		
+	<td> <div align="center">
+	<label>Software</label>
+		<input type="radio" name="comtype" value="software" checked>
+	</td>
+
+	<td> <div align="center"> </td>
+		
+	</optgroup>
+
+</tr>
+
+<tr>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+</tr>
+
+
+<tr>
+	<td> <div align="center">
+		<optgroup label="Operation mode:">
+	</td>
+	
+	<td> <div align="center">
+		<label>COM-Server</label>
+		<input type="radio" name="opmode" value="actAsServer" unchecked>
+	</td>
+		
+	<td> <div align="center">
+	<label>COM-Client</label>
+		<input type="radio" name="opmode" value="actAsClient" checked>
+	</td>
+
+	<td><div align="center"></div></td>
+
+	</optgroup>
+
+</tr>
+
+
+<tr>
+
+	<td> <div align="center">
+		<optgroup label="Target IP:">
+	</td>
+   <td> <div align="center"> </div></td>		
+	<td><div align="center"><input type="text" name="targetIP" value="123.456.789.0"></div></td>
+	<td><div align="center"></div></td>
+	</optgroup>
+</tr>
+
+
+<tr>
+
+	<td> <div align="center">
+		<optgroup label="Target Port:">
+	</td>
+   <td> <div align="center"> </div></td>		
+	<td><div align="center"><input type="text" name="targetPort" value="23"></div></td>
+	<td><div align="center"></div></td>
+	</optgroup>
+</tr>
+
+
+<!-- Delimiter -->
+
+<tr>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+</tr>
+
+<!-- Serial type (sw/hw) -->
+
+
+<!-- Rx pin -->
+
+<tr>
+
+	<td> <div align="center">
+		<optgroup label="GPIO to use as Rx">
+	</td>
+
+	<td> <div align="center">
+		<label>GPIO 00</label>
+		<input type="radio" name="rxGPIO" value="rx00" unchecked>
+	</td>
+		
+	<td> <div align="center">
+	<label>GPIO 02</label>
+		<input type="radio" name="rxGPIO" value="rx02" checked>
+	</td>
+
+	<td> <div align="center">
+		<label>GPIO 04</label>
+		<input type="radio" name="rxGPIO" value="rx04" unchecked>
+	</td>
+
+</tr>
+
+<tr>
+
+	<td> <div align="center"> </td>
+				
+	<td> <div align="center">
+	<label>GPIO 05</label>
+		<input type="radio" name="rxGPIO" value="rx05" checked>
+	</td>
+	
+
+	<td> <div align="center">
+		<label>GPIO 09</label>
+		<input type="radio" name="rxGPIO" value="rx09" unchecked>
+	</td>
+		
+	<td> <div align="center">
+	<label>GPIO 10</label>
+		<input type="radio" name="rxGPIO" value="rx10" checked>
+	</td>
+
+</tr>
+
+<tr>
+
+	<td> <div align="center"> </td>
+	
+	<td> <div align="center">
+		<label>GPIO 12</label>
+		<input type="radio" name="rxGPIO" value="rx12" unchecked>
+	</td>
+		
+	<td> <div align="center">
+	<label>GPIO 13</label>
+		<input type="radio" name="rxGPIO" value="rx13" checked>
+	</td>
+
+	<td> <div align="center">
+		<label>GPIO 14</label>
+		<input type="radio" name="rxGPIO" value="rx14" unchecked>
+	</td>
+
+</tr>
+
+<tr>
+
+	<td> <div align="center"> </td>
+			
+	<td> <div align="center">
+	<label>GPIO 15</label>
+		<input type="radio" name="rxGPIO" value="rx15" checked>
+	</td>
+
+	<td> <div align="center">
+		<label>GPIO 16</label>
+		<input type="radio" name="rxGPIO" value="rx16" unchecked>
+	</td>
+
+	<td> <div align="center"> </td>
+
+		
+	</optgroup>
+
+</tr>
+
+<!-- Tx pin -->
+
+<tr>
+
+	<td> <div align="center">
+		<optgroup label="GPIO to use as Tx">
+	</td>
+
+	<td> <div align="center">
+		<label>GPIO 00</label>
+		<input type="radio" name="txGPIO" value="tx00" unchecked>
+	</td>
+		
+	<td> <div align="center">
+	<label>GPIO 02</label>
+		<input type="radio" name="txGPIO" value="tx02" checked>
+	</td>
+
+	<td> <div align="center">
+		<label>GPIO 04</label>
+		<input type="radio" name="txGPIO" value="tx04" unchecked>
+	</td>
+
+</tr>
+
+<tr>
+
+	<td> <div align="center"> </td>
+				
+	<td> <div align="center">
+	<label>GPIO 05</label>
+		<input type="radio" name="txGPIO" value="tx05" checked>
+	</td>
+	
+
+	<td> <div align="center">
+		<label>GPIO 09</label>
+		<input type="radio" name="txGPIO" value="tx09" unchecked>
+	</td>
+		
+	<td> <div align="center">
+	<label>GPIO 10</label>
+		<input type="radio" name="txGPIO" value="tx10" checked>
+	</td>
+
+</tr>
+
+<tr>
+
+	<td> <div align="center"> </td>
+	
+	<td> <div align="center">
+		<label>GPIO 12</label>
+		<input type="radio" name="txGPIO" value="tx12" unchecked>
+	</td>
+		
+	<td> <div align="center">
+	<label>GPIO 13</label>
+		<input type="radio" name="txGPIO" value="tx13" checked>
+	</td>
+
+	<td> <div align="center">
+		<label>GPIO 14</label>
+		<input type="radio" name="txGPIO" value="tx14" unchecked>
+	</td>
+
+</tr>
+
+<tr>
+
+	<td> <div align="center"> </td>
+			
+	<td> <div align="center">
+	<label>GPIO 15</label>
+		<input type="radio" name="txGPIO" value="tx15" checked>
+	</td>
+
+	<td> <div align="center">
+		<label>GPIO 16</label>
+		<input type="radio" name="txGPIO" value="tx16" unchecked>
+	</td>
+
+	<td> <div align="center"> </td>
+
+		
+	</optgroup>
+
+</tr>
+
+<!-- Delimiter -->
+
+<tr>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+</tr>
+
+<!-- Data bits -->
+
+<tr>
+	<td> <div align="center">
+		<optgroup label="Data bits">
+	</td>
+	
+	<td> <div align="center">
+		<label>7 bit</label>
+		<input type="radio" name="data" value="7bit" unchecked>
+	</td>
+
+	<td> <div align="center">
+		<label>8 bit</label>
+		<input type="radio" name="data" value="8bit" unchecked>
+	</td>
+
+	<td> <div align="center">
+		<label>9 bit</label>
+		<input type="radio" name="data" value="9bit" unchecked>
+	</td>
+	
+	</optgroup>
+
+</tr>
+
+<!-- Stop bits -->
+
+<tr>
+	<td> <div align="center">
+		<optgroup label="Stopbits">
+	</td>
+	
+	<td> <div align="center">
+		<label>1 stopbit</label>
+		<input type="radio" name="stop" value="1stop" unchecked>
+	</td>
+
+	<td> <div align="center">
+		<label>2 stopbit</label>
+		<input type="radio" name="stop" value="2stop" unchecked>
+	</td>
+
+	<td> <div align="center"> </td>
+
+	<td> <div align="center"> </td>
+
+	</optgroup>
+
+</tr>
+
+<!-- Parity -->
+
+<tr>
+	<td> <div align="center">
+		<optgroup label="Parity">
+	</td>
+	
+	<td> <div align="center">
+		<label>No</label>
+		<input type="radio" name="par" value="noPar" unchecked>
+	</td>
+
+	<td> <div align="center">
+		<label>Even</label>
+		<input type="radio" name="par" value="evenPar" unchecked>
+	</td>
+
+	<td> <div align="center">
+		<label>Odd</label>
+		<input type="radio" name="par" value="oddPar" unchecked>
+	</td>
+
+	<td> <div align="center">
+		<label>Space</label>
+		<input type="radio" name="par" value="spcPar" unchecked>
+	</td>
+
+	</optgroup>
+
+</tr>
+
+<!-- Delimiter -->
+
+<!-- Handshake -->
+<tr>
+    <td> <div align="center">
+        <optgroup label="Handshake">
+    </td>
+    <td> <div align="center">
+        <label>Software</label>
+        <input type="radio" name="flow" value="Software" unchecked>
+    </td>
+    <td> <div align="center">
+        <label>disabled</label>
+        <input type="radio" name="flow" value="disabled" checked>
+    </td>
+    <td> <div align="center"> </td>
+    <td> <div align="center"> </td>
+    </optgroup>
+</tr>
+
+<tr>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+</tr>
+
+<!-- Baud rate -->
+
+<tr>
+
+	<td> <div align="center">
+		<optgroup label="Transfer speed">
+	</td>
+   <td> <div align="center"> </div></td>		
+
+	<td> <div align="center">
+		<select name="baud" size="1">
+ 				<option value="b9600">9600 Baud</option>
+				<option value="b19200">19200 Baud</option>
+				<option value="b38400">38400 Baud</option>
+				<option value="b57600">57600 Baud</option>
+				<option value="b74880">74880 Baud</option>
+				<option value="b115200">115200 Baud</option>
+				<option value="b230400">230400 Baud</option>
+				<option value="b460800">460800 Baud</option>
+				<option value="b921600">921600 Baud</option>
+		</select>
+	</td>
+
+	</optgroup>
+
+	
+</tr>
+
+
+<!-- <hr align="center"><br> -->
+
+<!-- Delimiter -->
+
+<tr>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+	<td> <div align="center"> <hr>
+	</div></td>
+</tr>
+
+</table>
+
+<div align="center">
+
+<input type="reset" name="rst" value="reset form">
+<input type="submit" name="ok" value="commit settings"> 
+<input type="submit" name="factory" value="factory settings">
+<input type="submit" name="close" value="close">
+</div>
+
+<!-- <hr align="center"><br> -->
+
+</form>
+<br>
+<div align="center">
+*If you select Software-Serial, you also have to specify a GPIO to use as Rx and one to use as Tx
+</div>
+</body>
+</html>
