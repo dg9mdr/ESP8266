@@ -39,6 +39,8 @@ The web server handles a configuration page for up to eight channels. Each chann
 In addition for each channel there are two flags to allow switching on or off using the http-API.
 There are three modes for each channel. ON and OFF override the user defined times if their check-boxes are active.  AUTO activates the user-defined times for each channel and time that is activated ( checked ).
 These setting information are stored in the EEPROM and restored on every reboot of the module.
+NOTE: don't forget to #define DEFAULT_WLAN_SSID and #define DEFAULT_WLAN_PASSPHRASE to values matching your local WLAN!
+
 
 ### SimpleHttpUpdate:
 A very useful feature of the ESP-moduls is the capability to update the binary sketch from a web-site and flash is on the fly. Afer a automatically reboot the new software is immediately running on the module.
