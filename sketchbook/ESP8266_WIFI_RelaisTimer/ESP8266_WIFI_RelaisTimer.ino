@@ -106,6 +106,16 @@ bool beQuiet;
 #define DEFAULT_NODENAME                "esp8266"
 #define DEFAULT_ADMIN_PASSWORD          "esp8266"
 
+// ------ define if GPIO00 and GPIO02 are SCL/SDA to a PCF8574
+//
+#define ESP_HAS_PCF8574
+//
+// ------ undefine if GPIO00 and GPIO02 directly drive two relais
+//        using a transistor amplifier
+//
+// #undef ESP_HAS_PCF8574
+
+
 //
 // ************************************************************************
 // Logging
@@ -247,6 +257,8 @@ dsEeprom eeprom;
 #define ACTION_FLAG_NO_ACTION      8
 #define ACTION_FLAG_STOPPED       16
 #define ACTION_FLAG_OVERRIDDEN    32
+#define ACTION_FLAG_ALWAYS_ON     64
+#define ACTION_FLAG_ALWAYS_OFF   128
 
 
 struct _action_entry {
@@ -411,6 +423,13 @@ char* _form_keywords_[MAX_ACTION_TABLE_LINES][14] = {
 #define KW_IDX_EXT_1       11
 #define KW_IDX_EXT_2       12
 #define KW_IDX_MODE        13
+
+
+#ifdef ESP_HAS_PCF8574
+#define CONNECTED_RELAIS    8
+#else
+#define CONNECTED_RELAIS    2
+#endif
 
 // ************************************************************************
 // setup local port for UDP communication
@@ -704,7 +723,8 @@ void resetActionFlags( void )
 {
     int currLine;
 
-    for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
+//    for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
+    for( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
     {
         if( !beQuiet )
         {
@@ -1203,6 +1223,51 @@ int restoreActionTable()
 
 }
 
+
+
+
+
+//
+// ************************************************************************
+//
+// ---------- toggleRelais()
+//
+// ************************************************************************
+//
+void toggleRelais(int port)
+{
+
+#ifdef ESP_HAS_PCF8574
+    PCF_38.toggle(port);
+#else
+    static int lastState;
+
+    digitalWrite( port, ~lastState );
+    lastState = ~lastState;
+
+#endif // ESP_HAS_PCF8574
+
+}
+
+
+//
+// ************************************************************************
+//
+// ---------- switchRelais()
+//
+// ************************************************************************
+//
+void switchRelais(int port, int newStatus)
+{
+
+#ifdef ESP_HAS_PCF8574
+    PCF_38.write(port, newStatus);
+#else
+    digitalWrite( port, newStatus );
+#endif // ESP_HAS_PCF8574
+
+}
+
 //
 // ************************************************************************
 //
@@ -1228,7 +1293,7 @@ void startupActions( void )
     Logger.Log(LOGLEVEL_DEBUG, "nowMinutes is %d\n", nowMinutes );
   }
 
-  for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
+  for( i = 0; i < CONNECTED_RELAIS; i++ )
   {
     tblEntry[i].actionFlag_1 = (ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION);
     tblEntry[i].actionFlag_2 = (ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION);
@@ -1238,105 +1303,146 @@ void startupActions( void )
       Logger.Log(LOGLEVEL_DEBUG, "setting port %d to LOW!\n", i );
     }
    
-    PCF_38.write(i, RELAIS_OFF);
+    switchRelais(i, RELAIS_OFF);
 
-    chkMinutesFrom = (atoi(tblEntry[i].hourFrom_1.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_1.c_str());
-    chkMinutesTo = (atoi(tblEntry[i].hourTo_1.c_str()) * 60) + atoi(tblEntry[i].minuteTo_1.c_str());
- 
-    if( chkMinutesTo < chkMinutesFrom )
+    if( tblEntry[i].enabled_1 )
     {
-      // time wrap
-      wrapMinutes = (23 * 60) + 59;
-      if( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
+
+      if( tblEntry[i].mode.equalsIgnoreCase("auto") )
       {
-//
-        if( nowMinutes > chkMinutesFrom )
+
+        chkMinutesFrom = (atoi(tblEntry[i].hourFrom_1.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_1.c_str());
+        chkMinutesTo = (atoi(tblEntry[i].hourTo_1.c_str()) * 60) + atoi(tblEntry[i].minuteTo_1.c_str());
+ 
+        if( chkMinutesTo < chkMinutesFrom )
         {
-          // set this entry to active
+          // time wrap
+          wrapMinutes = (23 * 60) + 59;
           if( !beQuiet )
           {
-            Logger.Log(LOGLEVEL_DEBUG, 
-              "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
-              nowMinutes, chkMinutesFrom, chkMinutesTo );
- 
-            Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
+            Logger.Log(LOGLEVEL_DEBUG, "wrap minutes time 1: %d\n", wrapMinutes);
           }
 
-          tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
-
-          PCF_38.write(i, RELAIS_ON);
-
-        }
-      }
-    }
-    else
-    {
-      if( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
-      {
-        if( !beQuiet )
-        {
-          Logger.Log(LOGLEVEL_DEBUG, 
-            "Current time(%d) is after Begin(%d) but before End(%d) of time 1 ... starting action\n",
-            nowMinutes, chkMinutesFrom, chkMinutesTo );
-
-          Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
-        }
-
-        tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
-
-        PCF_38.write(i, RELAIS_ON);
-
-      }
-    }
- 
-    chkMinutesFrom = (atoi(tblEntry[i].hourFrom_2.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_2.c_str());
-    chkMinutesTo = (atoi(tblEntry[i].hourTo_2.c_str()) * 60) + atoi(tblEntry[i].minuteTo_2.c_str());
- 
-    if( chkMinutesTo < chkMinutesFrom )
-    {
-      // time wrap
-      wrapMinutes = (23 * 60) + 59;
-      if( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
-      {
+          if( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
+          {
 //
-        if( nowMinutes > chkMinutesFrom )
+            if( nowMinutes > chkMinutesFrom )
+            {
+              // set this entry to active
+              if( !beQuiet )
+              {
+                Logger.Log(LOGLEVEL_DEBUG, 
+                  "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
+                  nowMinutes, chkMinutesFrom, chkMinutesTo );
+                Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
+              }
+
+              tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
+              switchRelais(i, RELAIS_ON);
+            }
+          }
+        }
+        else
         {
-          // set this entry to active
+          if( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
+          {
+            if( !beQuiet )
+            {
+              Logger.Log(LOGLEVEL_DEBUG, 
+                "Current time(%d) is after Begin(%d) but before End(%d) of time 1 ... starting action\n",
+                nowMinutes, chkMinutesFrom, chkMinutesTo );
+              Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
+            }
+
+            tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
+            switchRelais(i, RELAIS_ON);
+          }
+        }
+      }
+      else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      {
+        if( tblEntry[i].mode.equalsIgnoreCase("on") )
+        {
+          alwaysOn(1, i);
+        }
+        else
+        {
+          alwaysOff(1, i);
+        }
+      }
+    }
+
+    if( tblEntry[i].enabled_2 )
+    {
+
+      if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      {
+
+        chkMinutesFrom = (atoi(tblEntry[i].hourFrom_2.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_2.c_str());
+        chkMinutesTo = (atoi(tblEntry[i].hourTo_2.c_str()) * 60) + atoi(tblEntry[i].minuteTo_2.c_str());
+ 
+        if( chkMinutesTo < chkMinutesFrom )
+        {
+          // time wrap
+          wrapMinutes = (23 * 60) + 59;
           if( !beQuiet )
           {
-            Logger.Log(LOGLEVEL_DEBUG, 
-              "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
-              nowMinutes, chkMinutesFrom, chkMinutesTo );
- 
-            Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
+            Logger.Log(LOGLEVEL_DEBUG, "wrap minutes time 2: %d\n", wrapMinutes);
           }
 
-          tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
+          if( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
+          {
+//
+            if( nowMinutes > chkMinutesFrom )
+            {
+              // set this entry to active
+              if( !beQuiet )
+              {
+                Logger.Log(LOGLEVEL_DEBUG, 
+                  "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
+                  nowMinutes, chkMinutesFrom, chkMinutesTo );
+                Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
+              }
 
-          PCF_38.write(i, RELAIS_ON);
-
+              tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
+              switchRelais(i, RELAIS_ON);
+            }
+          }
         }
-      }
-    }
-    else
-    {
-      if( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
-      {
-        if( !beQuiet )
+        else
         {
-          Logger.Log(LOGLEVEL_DEBUG, 
-            "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
-            nowMinutes, chkMinutesFrom, chkMinutesTo );
+          if( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
+          {
+            if( !beQuiet )
+            {
+              Logger.Log(LOGLEVEL_DEBUG, 
+                "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
+                nowMinutes, chkMinutesFrom, chkMinutesTo );
  
-          Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
+              Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
+            }
+
+            tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
+            switchRelais(i, RELAIS_ON);
+          }
         }
-
-        tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
-    
-        PCF_38.write(i, RELAIS_ON);
-
+      }
+      else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      {
+        if( tblEntry[i].mode.equalsIgnoreCase("on") )
+        {
+          alwaysOn(2, i);
+        }
+        else
+        {
+          if( tblEntry[i].mode.equalsIgnoreCase("off") )
+          {
+            alwaysOff(2, i);
+          }
+        }
       }
     }
+
   }
 }
 
@@ -1380,15 +1486,18 @@ Logger.Log(LOGLEVEL_DEBUG,"EEPROM_ACTION_TBL_ENTRY_LENGTH = %d\n", EEPROM_ACTION
 Logger.Log(LOGLEVEL_DEBUG,"EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
 
 
-//  Wire.begin(default_sda_pin,default_scl_pin);
-  Wire.begin();
+#ifdef ESP_HAS_PCF8574
+  Wire.begin(default_sda_pin,default_scl_pin);
+//  Wire.begin();
 //  scanIIC();
+#endif // ESP_HAS_PCF8574
 
 
   resetAdminSettings2Default();
   resetActionFlags();
 
   if( eeprom.init( 1024, eeprom.version2Magic(), LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )  
+//  if( eeprom.init( 1024, 0x00, LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )  
   {
     if( eeprom.isValid() )
     {
@@ -1643,6 +1752,109 @@ void scanIIC()
 //
 // ************************************************************************
 //
+// ---------- void alwaysOn( int timerNo, int port )
+//
+// ************************************************************************
+//
+void alwaysOn(int timerNo, int port)
+{
+
+  if( !beQuiet )
+  {
+    Logger.Log(LOGLEVEL_DEBUG, "... check always on for port %d and timer = %d, flag #1 is %d, flag #2 is %d\n", 
+      port, timerNo, tblEntry[port].actionFlag_1, tblEntry[port].actionFlag_2);
+  }
+
+
+  if( timerNo == 1 )
+  {
+    if( (tblEntry[port].actionFlag_1 & ACTION_FLAG_ALWAYS_ON) == 0 )
+    {
+      tblEntry[port].actionFlag_1 |= ACTION_FLAG_ALWAYS_ON;
+      tblEntry[port].actionFlag_1 |= ACTION_FLAG_ACTIVE;
+      switchRelais(port, RELAIS_ON);
+
+      if( !beQuiet )
+      {
+        Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #1 is manual ALWAYS ON\n", port);
+      }
+
+    }
+  }
+  else
+  {
+    if( timerNo == 2 )
+    {
+      if( (tblEntry[port].actionFlag_2 & ACTION_FLAG_ALWAYS_ON) == 0 )
+      {
+        tblEntry[port].actionFlag_2 |= ACTION_FLAG_ALWAYS_ON;
+        tblEntry[port].actionFlag_2 |= ACTION_FLAG_ACTIVE;
+        switchRelais(port, RELAIS_ON);
+
+        if( !beQuiet )
+        {
+          Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #2 is manual ALWAYS ON\n", port);
+        }
+
+      }
+    }
+  }
+}
+
+//
+// ************************************************************************
+//
+// ---------- void alwaysOff( int timerNo, int port )
+//
+// ************************************************************************
+//
+void alwaysOff(int timerNo, int port)
+{
+
+  if( !beQuiet )
+  {
+    Logger.Log(LOGLEVEL_DEBUG, "... check always off for port %d and timer = %d, flag #1 is %d, flag #2 is\n", port, timerNo, tblEntry[port].actionFlag_1, tblEntry[port].actionFlag_2);
+  }
+
+  if( timerNo == 1 )
+  {
+    if( (tblEntry[port].actionFlag_1 & ACTION_FLAG_ALWAYS_OFF) == 0 )
+    {
+      tblEntry[port].actionFlag_1 |= ACTION_FLAG_ALWAYS_OFF;
+      tblEntry[port].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
+      switchRelais(port, RELAIS_OFF);
+
+      if( !beQuiet )
+      {
+        Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #1 is manual ALWAYS OFF\n", port);
+      }
+
+    }
+  }
+  else
+  {
+    if( timerNo == 2 )
+    {
+      if( (tblEntry[port].actionFlag_2 & ACTION_FLAG_ALWAYS_OFF) == 0 )
+      {
+        tblEntry[port].actionFlag_2 |= ACTION_FLAG_ALWAYS_OFF;
+        tblEntry[port].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
+        switchRelais(port, RELAIS_OFF);
+
+        if( !beQuiet )
+        {
+          Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #2 is manual ALWAYS OFF\n", port);
+        }
+
+      }
+    }
+  }
+}
+
+
+//
+// ************************************************************************
+//
 // ---------- int check4Action()
 //
 // ************************************************************************
@@ -1666,121 +1878,180 @@ int check4Action( void )
     Logger.Log(LOGLEVEL_DEBUG, "check4Action: check for minute-value: %d\n", nowMinutes );
   }
 
-  for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
+//  for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
+  for( i = 0; i < CONNECTED_RELAIS; i++ )
   {
 
-    chkMinutesFrom = (atoi(tblEntry[i].hourFrom_1.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_1.c_str());
-    chkMinutesTo = (atoi(tblEntry[i].hourTo_1.c_str()) * 60) + atoi(tblEntry[i].minuteTo_1.c_str());
+    if( tblEntry[i].enabled_1 )
+    {
 
-    if( chkMinutesFrom == nowMinutes )
+      if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      {
+
+        chkMinutesFrom = (atoi(tblEntry[i].hourFrom_1.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_1.c_str());
+        chkMinutesTo = (atoi(tblEntry[i].hourTo_1.c_str()) * 60) + atoi(tblEntry[i].minuteTo_1.c_str());
+
+        if( chkMinutesFrom == nowMinutes )
+        {
+          if( !beQuiet )
+          {
+            Logger.Log(LOGLEVEL_DEBUG, 
+              "action is time 1 - Begin %s:%s [%d] port %d. Actionflag is %d\n", 
+              tblEntry[i].hourFrom_1.c_str(), tblEntry[i].minuteFrom_1.c_str(),
+              chkMinutesFrom, i, tblEntry[i].actionFlag_1);
+          }
+
+          if( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) == 0 )
+          {
+            tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
+
+            switchRelais(i, RELAIS_ON);
+
+            if( !beQuiet )
+            {
+              Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 1 to active\n");
+            }
+          }
+        }
+
+        if(chkMinutesTo == nowMinutes )
+        {
+          if( !beQuiet )
+          {
+            Logger.Log(LOGLEVEL_DEBUG, 
+              "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
+              tblEntry[i].hourTo_1.c_str(), tblEntry[i].minuteTo_1.c_str(),
+              chkMinutesTo, i, tblEntry[i].actionFlag_1);
+          }
+
+          if( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) != 0 )
+          {
+            tblEntry[i].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
+            switchRelais(i, RELAIS_OFF);
+
+            if( !beQuiet )
+            {
+              Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 1 to inactive\n");
+            }
+          }
+          else
+          {
+            if( !beQuiet )
+            {
+              Logger.Log(LOGLEVEL_DEBUG, "nothing to do ... actionFlag for time 1 is already inactive\n");
+            }
+          }
+        }
+      }
+      else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      {
+        if( !beQuiet )
+        {
+          Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #1 is not auto\n", i);
+        }
+
+        if( tblEntry[i].mode.equalsIgnoreCase("on") )
+        {
+          alwaysOn(1, i);
+        }
+        else
+        {
+          if( tblEntry[i].mode.equalsIgnoreCase("off") )
+          {
+            alwaysOff(1, i);
+          }
+        }
+      }
+    }
+    else // if( tblEntry[i].enabled_1 )
     {
       if( !beQuiet )
       {
-        Logger.Log(LOGLEVEL_DEBUG, 
-          "action is time 1 - Begin %s:%s [%d] port %d. Actionflag is %d\n", 
-          tblEntry[i].hourFrom_1.c_str(), tblEntry[i].minuteFrom_1.c_str(),
-          chkMinutesFrom, i, tblEntry[i].actionFlag_1);
-      }
-
-      if( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) == 0 )
-      {
-        tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
-        PCF_38.write(i, RELAIS_ON);
-
-        if( !beQuiet )
-        {
-          Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 1 to active\n");
-        }
-
+        Logger.Log(LOGLEVEL_DEBUG, "nothing to do ... entry for port %d time #1 disabled\n", i);
       }
     }
 
-
-    if(chkMinutesTo == nowMinutes )
+    if( tblEntry[i].enabled_2 )
     {
+      if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      {
+        chkMinutesFrom = (atoi(tblEntry[i].hourFrom_2.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_2.c_str());
+        chkMinutesTo = (atoi(tblEntry[i].hourTo_2.c_str()) * 60) + atoi(tblEntry[i].minuteTo_2.c_str());
 
-        if( !beQuiet )
+        if(chkMinutesFrom == nowMinutes )
         {
-          Logger.Log(LOGLEVEL_DEBUG, 
-            "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
-            tblEntry[i].hourTo_1.c_str(), tblEntry[i].minuteTo_1.c_str(),
-            chkMinutesTo, i, tblEntry[i].actionFlag_1);
+          if( !beQuiet )
+          {
+            Logger.Log(LOGLEVEL_DEBUG, 
+              "action is time 2 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
+              tblEntry[i].hourFrom_2.c_str(), tblEntry[i].minuteFrom_2.c_str(),
+              chkMinutesFrom, i, tblEntry[i].actionFlag_2);
+          }
+
+          if( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) == 0 )
+          {
+            tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
+            switchRelais(i, RELAIS_ON);
+  
+            if( !beQuiet )
+            {
+              Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 2 to active\n");
+            }
+          }
         }
 
-      if( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) != 0 )
-      {
-        tblEntry[i].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
-        PCF_38.write(i, RELAIS_OFF);
-
-        if( !beQuiet )
+        if(chkMinutesTo == nowMinutes )
         {
-          Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 1 to inactive\n");
+          if( !beQuiet )
+          {
+            Logger.Log(LOGLEVEL_DEBUG, 
+              "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
+              tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str(),
+              chkMinutesTo, i, tblEntry[i].actionFlag_2);
+          }
+
+          if( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) != 0 )
+          {
+            tblEntry[i].actionFlag_2 &= ~ACTION_FLAG_ACTIVE;
+            switchRelais(i, RELAIS_OFF);
+
+            if( !beQuiet )
+            {
+              Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 2 to inactive\n");
+            }
+          }
+          else
+          {
+            if( !beQuiet )
+            {
+              Logger.Log(LOGLEVEL_DEBUG, "nothing to do ... actionFlag for time 2 is already inactive\n");
+            }
+          }
         }
       }
-      else
+      else // if( tblEntry[tmRow-1].mode.equalsIgnoreCase("auto") )
       {
         if( !beQuiet )
         {
-          Logger.Log(LOGLEVEL_DEBUG, "nothing to do ... actionFlag for time 1 is already inactive\n");
+          Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #2 is not auto\n", i);
+        }
+
+        if( tblEntry[i].mode.equalsIgnoreCase("on") )
+        {
+          alwaysOn(2, i);
+        }
+        else
+        {
+          alwaysOff(2, i);
         }
       }
     }
-
-    chkMinutesFrom = (atoi(tblEntry[i].hourFrom_2.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_2.c_str());
-    chkMinutesTo = (atoi(tblEntry[i].hourTo_2.c_str()) * 60) + atoi(tblEntry[i].minuteTo_2.c_str());
-
-    if(chkMinutesFrom == nowMinutes )
+    else // if( tblEntry[i].enabled_2 )
     {
-        if( !beQuiet )
-        {
-          Logger.Log(LOGLEVEL_DEBUG, 
-            "action is time 2 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
-            tblEntry[i].hourFrom_2.c_str(), tblEntry[i].minuteFrom_2.c_str(),
-            chkMinutesFrom, i, tblEntry[i].actionFlag_2);
-        }
-
-      if( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) == 0 )
+      if( !beQuiet )
       {
-        tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
-        PCF_38.write(i, RELAIS_ON);
-
-        if( !beQuiet )
-        {
-          Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 2 to active\n");
-        }
+        Logger.Log(LOGLEVEL_DEBUG, "nothing to do ... entry for port %d time #2 disabled\n", i);
       }
-
-    }
-
-    if(chkMinutesTo == nowMinutes )
-    {
-
-        if( !beQuiet )
-        {
-          Logger.Log(LOGLEVEL_DEBUG, 
-            "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
-            tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str(),
-            chkMinutesTo, i, tblEntry[i].actionFlag_2);
-        }
-
-      if( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) != 0 )
-      {
-        tblEntry[i].actionFlag_2 &= ~ACTION_FLAG_ACTIVE;
-        PCF_38.write(i, RELAIS_OFF);
-
-        if( !beQuiet )
-        {
-          Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 2 to inactive\n");
-        }
-      }
-      else
-      {
-        if( !beQuiet )
-        {
-          Logger.Log(LOGLEVEL_DEBUG, "nothing to do ... actionFlag for time 2 is already inactive\n");
-        }
-      }
-
     }
   }
 
@@ -1825,17 +2096,17 @@ void loop()
 
 //    for (int i=0; i<8; i++)
 //    {
-//      PCF_38.write(i, 1);
+//      switchRelais(i, 1);
 //      delay(100);
-//      PCF_38.write(i, 0);
+//      switchRelais(i, 0);
 //      delay(100);
 //    }
 
 //    for (int i=0; i<8; i++)
 //    {
-//      PCF_38.toggle(i);
+//      switchRelais.toggle(i);
 //      delay(100);
-//      PCF_38.toggle(i);
+//      switchRelais.toggle(i);
 //      delay(100);
 //    }
 //  }
@@ -2106,9 +2377,8 @@ tblEntry[i].enabled_2   = server.arg( _form_keywords_[i][ KW_IDX_EXT_2] ).equals
 tblEntry[i].extEnable_2 = server.arg( _form_keywords_[i][ KW_IDX_ENABLED_2] ).equalsIgnoreCase("aktiv") ? true : false;
 
       }
-storeActionTable();
 
-
+      storeActionTable();
       crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
       Logger.Log(LOGLEVEL_DEBUG,"CRC is now: %x -> write to POS %d\n", crcCalc, EEPROM_POS_CRC32 );
       eeprom.storeRaw( (char*) &crcCalc, EEPROM_MAXLEN_CRC32, EEPROM_POS_CRC32 );
@@ -2123,10 +2393,8 @@ storeActionTable();
 
       eeprom.validate();   
       Logger.Log(LOGLEVEL_DEBUG,"and set to ok and ready!\n");
-
-startupActions();
-
-
+      startupActions();
+// return;
 
   }
 
@@ -2209,294 +2477,4 @@ startupActions();
 
 /* ************** ++++++++++ ************* +++++++++++++++ */
 
-
-#ifdef IFIFIF
-
-
-
-tblEntry[0].name         = server.arg( _form_keywords_[0][KW_IDX_BEZEICHNER] );
-tblEntry[0].mode         = server.arg( _form_keywords_[0][KW_IDX_MODE] );
-tblEntry[0].hourFrom_1   = server.arg( _form_keywords_[0][KW_IDX_HFROM_1] );
-tblEntry[0].minuteFrom_1 = server.arg( _form_keywords_[0][KW_IDX_MFROM_1] );
-tblEntry[0].hourTo_1     = server.arg( _form_keywords_[0][KW_IDX_HTO_1] );
-tblEntry[0].minuteTo_1   = server.arg( _form_keywords_[0][KW_IDX_MTO_1] );
-tblEntry[0].hourFrom_2   = server.arg( _form_keywords_[0][KW_IDX_HFROM_2] );
-tblEntry[0].minuteFrom_2 = server.arg( _form_keywords_[0][KW_IDX_MFROM_2] );
-tblEntry[0].hourTo_2     = server.arg( _form_keywords_[0][KW_IDX_HTO_2] );
-tblEntry[0].minuteTo_2   = server.arg( _form_keywords_[0][KW_IDX_MTO_2] );
-
-tblEntry[0].enabled_1   = server.arg( _form_keywords_[0][ KW_IDX_ENABLED_1 ).equalsIgnoreCase("aktiv") ? true : false ;
-tblEntry[0].extEnable_1 = server.arg( _form_keywords_[0][ KW_IDX_EXT_1 ).equalsIgnoreCase("aktiv") = true : false;
-tblEntry[0].enabled_2   = server.arg( _form_keywords_[0][ KW_IDX_EXT_2 ).equalsIgnoreCase("aktiv") = true : false;
-tblEntry[0].extEnable_2 = server.arg( _form_keywords_[0][ KW_IDX_ENABLED_2 ).equalsIgnoreCase("aktiv") = true : false;
-
-
-
-tblEntry[0].name         = server.arg( "bezeichner1" );
-tblEntry[0].mode         = server.arg( "mode1" );
-tblEntry[0].hourFrom_1   = server.arg( "hfrom1_1" );
-tblEntry[0].minuteFrom_1 = server.arg( "mfrom1_1" );
-tblEntry[0].hourTo_1     = server.arg( "hto1_1" );
-tblEntry[0].minuteTo_1   = server.arg( "mto1_1" );
-tblEntry[0].hourFrom_2   = server.arg( "hfrom2_1" );
-tblEntry[0].minuteFrom_2 = server.arg( "mfrom2_1" );
-tblEntry[0].hourTo_2     = server.arg( "hto2_1" );
-tblEntry[0].minuteTo_2   = server.arg( "mto2_1" );
-
-tblEntry[0].enabled_1   = server.arg( "enabled1_1" ).equalsIgnoreCase("aktiv") ? true : false ;
-tblEntry[0].extEnable_1 = server.arg( "ext1_1" ).equalsIgnoreCase("aktiv") ? true : false;
-tblEntry[0].enabled_2   = server.arg( "enabled2_1" ).equalsIgnoreCase("aktiv") ? true : false;
-tblEntry[0].extEnable_2 = server.arg( "ext2_1" ).equalsIgnoreCase("aktiv") ? true : false;
-
-
-
-
-http://192.168.1.127:8080/?bezeichner1=Ausgang+1&enabled1_1=aktiv&hfrom1_1=13&mfrom1_1=30&hto1_1=19&mto1_1=15&enabled2_1=aktiv&hfrom2_1=13&mfrom2_1=30&hto2_1=19&mto2_1=15&ext1_1=aktiv&ext2_1=aktiv&mode1=auto&bezeichner2=Ausgang+2&enabled1_2=aktiv&hfrom1_2=13&mfrom1_2=30&hto1_2=19&mto1_2=15&enabled2_2=aktiv&hfrom2_2=13&mfrom2_2=30&hto2_2=19&mto2_2=15&ext1_2=aktiv&ext2_2=aktiv&mode2=auto&bezeichner3=Ausgang+3&enabled1_3=aktiv&hfrom1_3=13&mfrom1_3=30&hto1_3=19&mto1_3=15&enabled2_3=aktiv&hfrom2_3=13&mfrom2_3=30&hto2_3=19&mto2_3=15&ext1_3=aktiv&ext2_3=aktiv&mode3=auto&bezeichner4=Ausgang+4&enabled1_4=aktiv&hfrom1_4=13&mfrom1_4=30&hto1_4=19&mto1_4=15&enabled2_4=aktiv&hfrom2_4=13&mfrom2_4=30&hto2_4=19&mto2_4=15&ext1_4=aktiv&ext2_4=aktiv&mode4=auto&bezeichner5=Ausgang+5&enabled1_5=aktiv&hfrom1_5=13&mfrom1_5=30&hto1_5=19&mto1_5=15&enabled2_5=aktiv&hfrom2_5=13&mfrom2_5=30&hto2_5=19&mto2_5=15&ext1_5=aktiv&ext2_5=aktiv&mode5=auto&bezeichner6=Ausgang+6&enabled1_6=aktiv&hfrom1_6=13&mfrom1_6=30&hto1_6=19&mto1_6=15&enabled2_6=aktiv&hfrom2_6=13&mfrom2_6=30&hto2_6=19&mto2_6=15&ext1_6=aktiv&ext2_6=aktiv&mode6=auto&bezeichner7=Ausgang+7&enabled1_7=aktiv&hfrom1_7=13&mfrom1_7=30&hto1_7=19&mto1_7=15&enabled2_7=aktiv&hfrom2_7=13&mfrom2_7=30&hto2_7=19&mto2_7=15&ext1_7=aktiv&ext2_7=aktiv&mode7=auto&bezeichner8=Ausgang+8&enabled1_8=aktiv&hfrom1_8=13&mfrom1_8=30&hto1_8=19&mto1_8=15&enabled2_8=aktiv&hfrom2_8=13&mfrom2_8=30&hto2_8=19&mto2_8=15&ext1_8=aktiv&ext2_8=aktiv&mode8=auto&submit=speichern
-
-
-/**
- * httpUpdate.ino
- *
- *  Created on: 27.11.2015
- *
- */
-
-#include <Arduino.h>
-#include <EEPROM.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266WiFiMulti.h>
-
-#include <ESP8266HTTPClient.h>
-#include <ESP8266httpUpdate.h>
-
-#define USE_SERIAL Serial
-const char* ssid = "YOUR_SSID_HERE";
-const char* password = "YOUR_PASSPHRASE_HERE";
-
-
-String MAC_Address = "";
-#define DATA_POS_MAGIC          0
-#define EEPROM_MAGIC_BYTE    0xEA
-#define DATA_POS_REV            1
-
-//
-// check whether first byte in EEPROM is "magic"
-//
-bool eeIsValid()
-{
-  bool retVal = true;
-  char magicByte;
-
-  if( (magicByte = EEPROM.read( DATA_POS_MAGIC )) !=  EEPROM_MAGIC_BYTE )
-  {
-    retVal = false;
-    Serial.print("wrong magic: ");
-    Serial.println( magicByte );
-  }
-
-  return(retVal);
-}
-
-//
-// place a "magic" to the first byte in EEPROM
-//
-bool eeValidate()
-{
-  bool retVal = true;
-  EEPROM.write( DATA_POS_MAGIC, EEPROM_MAGIC_BYTE );
-  EEPROM.commit();
-
-  return(retVal);
-}
-
-
-void setup() {
-
-    uint8_t MAC_Bytes[6];
-
-    USE_SERIAL.begin(115200);
-    // USE_SERIAL.setDebugOutput(true);
-
-    WiFi.macAddress(MAC_Bytes);
-    for (int i = 0; i < sizeof(MAC_Bytes); ++i)
-    {
-      MAC_Address += String( MAC_Bytes[i], HEX );
-      if( i+1 < sizeof(MAC_Bytes) )
-      {
-        MAC_Address += ":";
-      }
-    }
-    USE_SERIAL.println();
-
-Serial.print("MAC is: ");
-Serial.println( MAC_Address );
-
-    USE_SERIAL.println();
-    USE_SERIAL.println();
-    USE_SERIAL.println();
-
-    for(uint8_t t = 4; t > 0; t--) {
-        USE_SERIAL.printf("[SETUP] WAIT %d...\n", t);
-        USE_SERIAL.flush();
-        delay(1000);
-    }
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
-    ESP.restart();
-  }
-
-}
-
-void loop() 
-{
-  static bool updChkDone = false;
-  uint8_t rev;
-    
-    // wait for WiFi connection
-    if(WiFi.waitForConnectResult() == WL_CONNECTED) 
-    {
-      
-      if( !updChkDone )
-      {
-        EEPROM.begin(16);
-
-        if( eeIsValid() )
-        {
-          rev = EEPROM.read(DATA_POS_REV);
-        }
-        else
-        {
-          rev = 1;
-        }
-
-        rev++;
-        String UpdFile = "http://192.168.1.109/" + MAC_Address + "-" + String(rev, HEX) + ".bin";
-        updChkDone = true;
-
-USE_SERIAL.println();
-USE_SERIAL.print("Update file is: ");
-USE_SERIAL.println( UpdFile );
-USE_SERIAL.println();
-
-        t_httpUpdate_return ret = ESPhttpUpdate.update(UpdFile.c_str());
-        //t_httpUpdate_return  ret = ESPhttpUpdate.update("https://server/file.bin");
-
-        switch(ret) {
-            case HTTP_UPDATE_FAILED:
-                USE_SERIAL.printf("HTTP_UPDATE_FAILD Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-                if( !eeIsValid() )
-                {
-                  rev = 0;
-                  EEPROM.write(DATA_POS_REV, rev);
-                  eeValidate();
-                  EEPROM.commit();
-                  USE_SERIAL.print("revision: ");
-                  USE_SERIAL.print(rev, HEX);
-                  USE_SERIAL.println(" stored to EEPROM");
-                }
-                break;
-
-            case HTTP_UPDATE_NO_UPDATES:
-                USE_SERIAL.println("HTTP_UPDATE_NO_UPDATES");
-                if( !eeIsValid() )
-                {
-                  rev = 0;
-                  EEPROM.write(DATA_POS_REV, rev);
-                  eeValidate();
-                  EEPROM.commit();
-                  USE_SERIAL.print("revision: ");
-                  USE_SERIAL.print(rev, HEX);
-                  USE_SERIAL.println(" stored to EEPROM");
-                }
-                break;
-
-            case HTTP_UPDATE_OK:
-                USE_SERIAL.println("HTTP_UPDATE_OK");
-                EEPROM.write(DATA_POS_REV, rev);
-                eeValidate();
-                EEPROM.commit();
-                USE_SERIAL.print("revision: ");
-                USE_SERIAL.print(rev, HEX);
-                USE_SERIAL.println(" stored to EEPROM");
-                updChkDone = false;
-                break;
-        }
-      }
-    }
-}
-
-//
-//    FILE: pcf8574_test.ino
-//  AUTHOR: Rob Tillaart
-//    DATE: 27-08-2013
-//
-// PUPROSE: demo 
-//
-
-#include <Wire.h>
-
-// adjust addresses if needed
-PCF8574 PCF_38(0x38);  // add switches to lines  (used as input)
-
-void setup()
-{
-  Serial.begin(115200);
-  Serial.println("\nTEST PCF8574\n");
-
-  uint8_t value = PCF_38.read8();
-  Serial.print("#38:\t");
-  Serial.println(value);
-
-  for (int i=0; i<255; i++)
-  {
-    PCF_39.write8(i);
-    delay(100);
-  }
-
-  PCF_39.write(0, 1);
-  for (int i=0; i<7; i++)
-  {
-    PCF_39.shiftLeft();
-    delay(100);
-  }
-
-  for (int i=0; i<7; i++)
-  {
-    PCF_39.shiftRight();
-    delay(100);
-  }
-
-  for (int i=0; i<8; i++)
-  {
-    PCF_39.write(i, 1);
-    delay(100);
-    PCF_39.write(i, 0);
-    delay(100);
-  }
-
-  for (int i=0; i<8; i++)
-  {
-    PCF_39.toggle(i);
-    delay(100);
-    PCF_39.toggle(i);
-    delay(100);
-  }
-}
-
-void loop()
-{
-  // echos the lines
-  uint8_t value = PCF_38.read8();
-  PCF_39.write8(value);
-  delay(100);
-}
-//
-// END OF FILE
-//
-
-#endif // IFIFIF
 
