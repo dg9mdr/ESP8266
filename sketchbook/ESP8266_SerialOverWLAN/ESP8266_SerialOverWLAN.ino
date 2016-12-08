@@ -23,6 +23,12 @@
 //
 // To reach this, you may setup one ESP-8266 node as a "COM-Server". 
 // To do so, browse to http://Your.ESP.IP.ADDRESS:8080 
+//
+// REMEMBER TO SET MATCHING VALUES FOR YOUR WLAN ACCESS!
+// On the two lines about 113 and below set
+// #define FACTORY_WLAN_SSID to YOUR SSID
+// #define FACTORY_WLAN_PASSPHRASE to YOUR PASSPHRASE for access
+//
 // You can login to the admin page. Default Password is esp8266. Select
 // COM-Port settings and activate COM-Server (default).
 // After Restart the ESP you can connect any device with serial port
@@ -53,7 +59,10 @@
 //-------- History -------------------------------------------------
 //
 // 1st version: 12/05/2016 - work in progress pre-release
-// update:
+//
+// update ....: 12/08/2916 - replaced serial-log by SimpleLog-class
+//                           replaced inline eeprom-access by dsEeprom-class
+//                           check for autoconnect in setup()
 //
 // ************************************************************************
 // program flow
@@ -64,6 +73,8 @@
 #define IGNORE_IF_CONDITION              1
 //  
 // ---- suppress debug output to serial line -------------------------------
+// NOTE: This will become obselete because of replacing direct output
+//       to Serial by SimpleLog-class!
 // be quiet = no output
 #define BE_QUIET              false
 //
@@ -1426,8 +1437,12 @@ SONConnected = false;
 //
 void LEDOff(void);
 
+#define MAX_MSECS_FOR_AUTOCONNECT   10000 // 10 sec
+
 void setup() 
 {
+    static long mSecsTriedConnect;
+
     LEDOff();
 
     adminAccessSucceeded = false;
@@ -1497,19 +1512,56 @@ void setup()
                 wlanSSID.c_str(), wlanPasswd.c_str());
         }
 
-        // Connect to WiFi network
-        WiFi.begin( wlanSSID.c_str(), wlanPasswd.c_str());
-   
+        mSecsTriedConnect = millis();
         // loop until connection is established
-        while (WiFi.status() != WL_CONNECTED) 
+        if( !beQuiet )
         {
-            delay(500);
+            Logger.Log(LOGLEVEL_DEBUG,"First try auto connect\n");
+        }
+
+        while (WiFi.status() != WL_CONNECTED && (millis() - mSecsTriedConnect) < MAX_MSECS_FOR_AUTOCONNECT) 
+        {
             if( !beQuiet )
             {
                 Logger.Log(LOGLEVEL_DEBUG, ".");
             }
+            delay(500);
         }
-        Logger.Log(LOGLEVEL_DEBUG,"WiFi connected\n");
+
+        if( WiFi.status() != WL_CONNECTED) 
+        {
+
+            if( !beQuiet )
+            {
+                Logger.Log(LOGLEVEL_DEBUG,"auto connect FAILED\n");
+
+            }
+            // Connect to WiFi network
+            WiFi.begin( wlanSSID.c_str(), wlanPasswd.c_str());
+   
+            // loop until connection is established
+            while (WiFi.status() != WL_CONNECTED) 
+            {
+                delay(500);
+                if( !beQuiet )
+                {
+                    Logger.Log(LOGLEVEL_DEBUG, ".");
+                }
+            }
+            if( !beQuiet )
+            {
+                Logger.Log(LOGLEVEL_DEBUG,"WiFi connected\n");
+            }
+
+        }
+        else
+        {
+            if( !beQuiet )
+            {
+                Logger.Log(LOGLEVEL_DEBUG,"AUTO CONNECTED\n");
+            }
+        }
+
     }
 
     server = ESP8266WebServer( wwwServerPort.toInt() );
