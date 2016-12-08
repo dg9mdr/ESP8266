@@ -19,6 +19,11 @@
 //
 // ************************************************************************
 //
+//   REMEMBER TO SET MATCHING VALUES FOR YOUR WLAN ACCESS!
+//   On the two lines around 104 and below set
+//   #define FACTORY_WLAN_SSID to YOUR SSID
+//   #define FACTORY_WLAN_PASSPHRASE to YOUR PASSPHRASE for access
+//
 //   The module connects to the specified WLAN as a WiFi-client. After
 //   that, it requests the current date an time via network time protocol
 //   from a specific NTP-server.
@@ -54,6 +59,7 @@
 //-------- History --------------------------------------------------------
 //
 // 2016/10/28: initial version 
+// 2016/12/08: added flag handling
 // 
 //
 // ************************************************************************
