@@ -30,7 +30,7 @@
 // and may be destroyed, if you don't use a levelshifter to 3V3.
 // Now you may telnet to YOUR.ESP.IP.ADDRESS port 1234. All input is send
 // to the connected device ia rs232. All data the serial device is sending
-// is received over WLAN soo you will see the output.
+// is received over WLAN so you will see the output.
 // This may be useful for e.g. modems, ...
 // It is possible to setup another ESP as a COM-Client.
 // Configuring is done alike setup in server mode.
@@ -83,9 +83,18 @@
 //
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
-#include <EEPROM.h>
 #include <SoftwareSerial.h>
 #include "ioStreams.h"
+
+#include "dsEeprom.h"           // simplified access to onchip EEPROM
+#include "SimpleLog.h"          // fprintf()-like logging
+
+// ************************************************************************
+// Logging
+// ************************************************************************
+// 
+static SimpleLog Logger;
+//
 //
 // ************************************************************************
 // defines for factory settings
@@ -342,6 +351,14 @@
 #define SERIAL_BAUD                  115200
 #define SON_SERVER_PORT                1234
 //
+// ************************************************************************
+//
+// ---------- global dsEeprom instance and layout for extended EEPROM data
+//
+// ************************************************************************
+//
+dsEeprom eeprom;
+//
 // layout of EEPROM data
 //
 #define EEPROM_BLOCK_SIZE              1024
@@ -506,17 +523,6 @@ WiFiClient outgoingTelnetConnection;
 #define ARGS_ADMIN_PAGE         2
 //
 // ************************************************************************
-// CRC lookup table
-// ************************************************************************
-//
-static const PROGMEM uint32_t crc_table[16] = {
-    0x00000000, 0x1db71064, 0x3b6e20c8, 0x26d930ac,
-    0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
-    0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c,
-    0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c
-};
-//
-// ************************************************************************
 // forward declarations
 // ************************************************************************
 //
@@ -538,373 +544,6 @@ int nodeRestoreAdminSettings(void);
 int nodeStoreCOMSettings(void);
 int nodeRestoreCOMSettings(void);
 //
-// ************************************************************************
-// CRC calculation e.g. over EEPROMo for verification
-// ************************************************************************
-//
-unsigned long eeprom_crc(int startPos, int length)
-{
-  unsigned long crc = ~0L;
-
-  for (int index = startPos; index < (startPos + length); ++index) 
-  {
-    crc = crc_table[(crc ^ EEPROM.read(index)) & 0x0f] ^ (crc >> 4);
-    crc = crc_table[((crc ^ EEPROM.read(index)) >> 4) & 0x0f] ^ (crc >> 4);
-    crc = ~crc;
-  }
-  return crc;
-}
-//
-// ************************************************************************
-// EEPROM access
-// ************************************************************************
-//
-//
-// clear EEPROM content (set to zero )
-//
-void eeWipe( void )
-{
-  for( int index = 0; index < EEPROM_BLOCK_SIZE; index++ )
-  {
-    EEPROM.write( index, '\0' );
-  }
-  EEPROM.commit();
-}
-//
-//
-//
-// store field length to a specific position
-//
-int eeStoreFieldLength( char* len, int dataIndex )
-{
-  int retVal = 0;
-
-  if( !beQuiet )
-  {
-    Serial.print("write LEN byte [");
-    Serial.print(len[0],HEX);
-    Serial.print("] to pos ");
-    Serial.println(dataIndex);
-  }
-  
-  EEPROM.write(dataIndex, len[0]);
-
-  if( !beQuiet )
-  {
-    Serial.print("write LEN byte [");
-    Serial.print(len[1],HEX);
-    Serial.print("] to pos ");
-    Serial.println(dataIndex+1);
-  }
-  
-  EEPROM.write(dataIndex+1, len[1]);
-
-  return(retVal);
-}
-
-//
-// restore field length from a specific position
-//
-int eeRestoreFieldLength( char* len, int dataIndex )
-{
-  int retVal = 0;
-
-  len[0] = EEPROM.read(dataIndex);
-
-  if( !beQuiet )
-  {
-    Serial.print("got LEN byte [");
-    Serial.print(len[0],HEX);
-    Serial.print("] from pos ");
-    Serial.println(dataIndex);
-  }
-
-  len[1] = EEPROM.read(dataIndex+1);
-
-  if( !beQuiet )
-  {
-    Serial.print("got LEN byte [");
-    Serial.print(len[1],HEX);
-    Serial.print("] from pos ");
-    Serial.println(dataIndex+1);  
-  }
-
-  return(retVal);
-}
-
-//
-// store a boolean value to a specific position
-//
-int eeStoreBoolean(  char* data, int dataIndex )
-{
-    int retVal = 0;
-    short len = EEPROM_MAXLEN_BOOLEAN;
-
-    if( !beQuiet )
-    {
-        Serial.print("store boolean to eeprom: Address is [");
-        Serial.print(dataIndex);
-        Serial.println("]");
-    }
-
-    if( (retVal = eeStoreFieldLength( (char*) &len, dataIndex )) == 0 )
-    {
-        for (int i = 0; i < len; ++i)
-        {
-            EEPROM.write(dataIndex + EEPROM_LEADING_LENGTH + i, data[i]);
-            if( !beQuiet )
-            {
-                Serial.print("Wrote: ");
-                Serial.println(data[i]); 
-            }
-        }
-    }
-
-    return(retVal);
-}
-//
-// restore a boolean value from a specific position
-//
-int eeRestoreBoolean( char *data, int dataIndex )
-{
-    int retVal = 0;
-    char rdValue;
-
-    if( !beQuiet )
-    {
-        Serial.print("restore boolean from eeprom: Address is [");
-        Serial.print(dataIndex);
-        Serial.println("]");
-    }
-
-    rdValue = EEPROM.read(dataIndex+ EEPROM_LEADING_LENGTH);
-
-    if( rdValue == 0 )
-    {
-        data[0] = false;
-    }
-    else
-    {
-        if( rdValue == 1 )
-        {
-            data[0] = true;
-        }
-        else
-        {
-            retVal = -1;
-        }
- 
-    }
-
-    return(retVal);
-}
-//
-// store a raw byte buffer without leading length field
-// to a specific position
-//
-int eeStoreRaw( const char* data, short len, int dataIndex )
-{
-    int retVal = 0;
-
-    if( !beQuiet )
-    {
-        Serial.print("store raw data to eeprom: Address is [");
-        Serial.print(dataIndex);
-        Serial.print("] - len = ");
-        Serial.println(len);
-    }
-
-    for (int i = 0; i < len; ++i)
-    {
-        EEPROM.write(dataIndex, data[i]);
-        Serial.print("Wrote: ");
-        Serial.println(data[i], HEX); 
-    }
-
-  return(retVal);
-}
-//
-// restore a byte buffer without leading length field
-// from a specific position 
-//
-int eeRestoreRaw( String& data, int dataIndex, int len, int maxLen)
-{
-  int retVal = 0;
-  char c;
-  
-  if( !beQuiet )
-  {
-    Serial.print("restore raw data from eeprom: Address is [");
-    Serial.print(dataIndex);
-    Serial.print("] - maxlen = ");
-    Serial.println(maxLen);
-  }
-
-  if( len > 0 )
-  {
-    data = "";
-    for( int i=0; i < len && i < maxLen; i++ )
-    {
-      c = EEPROM.read(dataIndex + i);
-      if( !beQuiet )
-      {
-        Serial.print(c, HEX);
-      }
-      data += c;
-    }
-  }
-
-  if( !beQuiet )
-  {
-    Serial.println(" - done!");
-  }
-
-  return(retVal);
-}
-
-//
-// store a byte array to a specific position
-//
-int eeStoreBytes( const char* data, short len, int dataIndex )
-{
-    int retVal = 0;
-
-    if( !beQuiet )
-    {
-        Serial.print("store byte to eeprom: Address is [");
-        Serial.print(dataIndex);
-        Serial.print("] - len = ");
-        Serial.println(len);
-    }
-
-    if( (retVal = eeStoreFieldLength( (char*) &len, dataIndex )) == 0 )
-    {
-        for (int i = 0; i < len; ++i)
-        {
-            EEPROM.write(dataIndex + EEPROM_LEADING_LENGTH + i, data[i]);
-            if( !beQuiet )
-            {
-                Serial.print("Wrote: ");
-                Serial.println(data[i]); 
-            }
-        }
-    }
-
-  return(retVal);
-}
-
-
-//
-// restore a string var from a specific position
-//
-int eeRestoreBytes( String& data, int dataIndex, int len, int maxLen)
-{
-  int retVal = 0;
-  char c;
-  
-  if( !beQuiet )
-  {
-    Serial.print("restore data from eeprom: Address is [");
-    Serial.print(dataIndex);
-    Serial.print("] - maxlen = ");
-    Serial.println(maxLen);
-  }
-
-  if( len > 0 )
-  {
-    data = "";
-    for( int i=0; i < len && i < maxLen; i++ )
-    {
-      c = EEPROM.read(dataIndex + EEPROM_LEADING_LENGTH + i);
-      if( !beQuiet )
-      {
-        Serial.print(c);
-      }
-      data += c;
-    }
-  }
-
-  if( !beQuiet )
-  {
-    Serial.println(" - done!");
-  }
-
-  return(retVal);
-}
-
-//
-// store a string var to a specific position
-//
-int eeStoreString( String data, int maxLen, int dataIndex )
-{
-  int retVal = 0;
-  short wrLen;
-
-  if( data.length() <= maxLen )
-  {
-    wrLen = data.length();
-  }
-  else
-  {
-    wrLen = maxLen;
-  }
-
-  retVal = eeStoreBytes( data.c_str(), wrLen, dataIndex );
-
-  return(retVal);
-}
-//
-// restore a string var from a specific position
-//
-int eeRestoreString( String& data, int dataIndex, int maxLen )
-{
-  int retVal = 0;
-  short len = 0;
-  
-  if( (retVal = eeRestoreFieldLength( (char*) &len, dataIndex )) == 0 )
-  {
-    retVal = eeRestoreBytes( data, dataIndex, len, maxLen );
-    if( !beQuiet )
-    {
-      Serial.println(" - done!");
-    }
-  }
-
-  return(retVal);
-}
-
-//
-// check whether first byte in EEPROM is "magic"
-//
-bool eeIsValid()
-{
-  bool retVal = true;
-  char magicByte;
-
-  if( (magicByte = EEPROM.read( EEPROM_POS_MAGIC )) !=  EEPROM_MAGIC_BYTE )
-  {
-    retVal = false;
-    if( !beQuiet )
-    {
-      Serial.print("wrong magic: ");
-      Serial.println( magicByte );
-    }
-  }
-
-  return(retVal);
-}
-
-//
-// place a "magic" to the first byte in EEPROM
-//
-bool eeValidate()
-{
-  bool retVal = true;
-  EEPROM.write( EEPROM_POS_MAGIC, EEPROM_MAGIC_BYTE );
-  EEPROM.commit();
-
-  return(retVal);
-}
 //
 // ************************************************************************
 // store all control values (e.g. SSID) to EEPROM
@@ -918,70 +557,62 @@ int nodeStoreAdminSettings()
 
     if( !beQuiet )
     {
-        Serial.print("storing SSID: ");
-        Serial.println(wlanSSID);
+        Logger.Log(LOGLEVEL_DEBUG, "storing SSID: %s\n", wlanSSID.c_str());
     }
 
-    eeStoreString(  wlanSSID,      EEPROM_MAXLEN_WLAN_SSID,       EEPROM_POS_WLAN_SSID );
+    eeprom.storeString(  wlanSSID,      EEPROM_MAXLEN_WLAN_SSID,       EEPROM_POS_WLAN_SSID );
     
     if( !beQuiet )
     {
-        Serial.print("storing Passphrase: ");
-        Serial.println(wlanPasswd);
+        Logger.Log(LOGLEVEL_DEBUG, "storing Passphrase: %s\n", wlanPasswd.c_str());
     }
 
-    eeStoreString(  wlanPasswd,    EEPROM_MAXLEN_WLAN_PASSPHRASE, EEPROM_POS_WLAN_PASSPHRASE );
+    eeprom.storeString(  wlanPasswd,    EEPROM_MAXLEN_WLAN_PASSPHRASE, EEPROM_POS_WLAN_PASSPHRASE );
     
     if( !beQuiet )
     {
-        Serial.print("storing ServerIP: ");
-        Serial.println(wwwServerIP);
+        Logger.Log(LOGLEVEL_DEBUG, "storing ServerIP: %s\n", wwwServerIP.c_str());
     }
 
-    eeStoreString(  wwwServerIP,   EEPROM_MAXLEN_SERVER_IP,       EEPROM_POS_SERVER_IP );
+    eeprom.storeString(  wwwServerIP,   EEPROM_MAXLEN_SERVER_IP,       EEPROM_POS_SERVER_IP );
     
     if( !beQuiet )
     {
-        Serial.print("storing ServerPort: ");
-        Serial.println(wwwServerPort);
+        Logger.Log(LOGLEVEL_DEBUG, "storing ServerPort: %s\n", wwwServerPort.c_str());
     }
 
-    eeStoreString(  wwwServerPort, EEPROM_MAXLEN_SERVER_PORT,     EEPROM_POS_SERVER_PORT );
+    eeprom.storeString(  wwwServerPort, EEPROM_MAXLEN_SERVER_PORT,     EEPROM_POS_SERVER_PORT );
     
     if( !beQuiet )
     {
-        Serial.print("storing Nodename: ");
-        Serial.println(nodeName);
+        Logger.Log(LOGLEVEL_DEBUG, "storing Nodename: %s\n", nodeName.c_str());
     }
 
-    eeStoreString(  nodeName,      EEPROM_MAXLEN_NODENAME,        EEPROM_POS_NODENAME );
+    eeprom.storeString(  nodeName,      EEPROM_MAXLEN_NODENAME,        EEPROM_POS_NODENAME );
     
     if( !beQuiet )
     {
-        Serial.print("storing adminPasswd: ");
-        Serial.println(adminPasswd);
+        Logger.Log(LOGLEVEL_DEBUG, "storing adminPasswd: %s\n", adminPasswd.c_str());
     }
 
-    eeStoreString(  adminPasswd,   EEPROM_MAXLEN_ADMIN_PASSWORD,  EEPROM_POS_ADMIN_PASSWORD );
+    eeprom.storeString(  adminPasswd,   EEPROM_MAXLEN_ADMIN_PASSWORD,  EEPROM_POS_ADMIN_PASSWORD );
     
     if( !beQuiet )
     {
-        Serial.print("storing useDHCP: ");
-        Serial.println(useDhcp);
+        Logger.Log(LOGLEVEL_DEBUG, "storing useDHCP: %d\n", useDhcp);
     }
 
-    eeStoreBoolean( (char*) &useDhcp,         EEPROM_POS_USE_DHCP );
-    crcCalc = eeprom_crc( EEPROM_DATA_BEGIN, EEPROM_BLOCK_SIZE );
+    eeprom.storeBoolean( (char*) &useDhcp,         EEPROM_POS_USE_DHCP );
+    crcCalc = eeprom.crc( EEPROM_DATA_BEGIN, EEPROM_BLOCK_SIZE );
 
     if( !beQuiet )
     {
-        Serial.print("calculated crc over eeprom: ");
-        Serial.println(crcCalc, HEX);
+        Logger.Log(LOGLEVEL_DEBUG, "calculated crc over eeprom: %x\n", crcCalc);
     }
 
-    eeStoreRaw( (char*) &crcCalc, EEPROM_MAXLEN_CRC32, EEPROM_POS_CRC32 );
+    eeprom.storeRaw( (char*) &crcCalc, EEPROM_MAXLEN_CRC32, EEPROM_POS_CRC32 );
 
-    eeValidate();
+    eeprom.validate();
 
     return( retVal );
 }
@@ -998,77 +629,67 @@ int nodeRestoreAdminSettings()
     unsigned long crcRead;
     String data = "";
 
-    if( eeIsValid() || IGNORE_IF_CONDITION )
+    if( eeprom.isValid() || IGNORE_IF_CONDITION )
     {
-        crcCalc = eeprom_crc( EEPROM_DATA_BEGIN, EEPROM_BLOCK_SIZE );
+        crcCalc = eeprom.crc( EEPROM_DATA_BEGIN, EEPROM_BLOCK_SIZE );
 
-        eeRestoreRaw( data, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
+        eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
         crcRead = atol(data.c_str());
 
         if( !beQuiet )
         {
-            Serial.print("restored crc: ");
-            Serial.print(crcRead, HEX);
-            Serial.print(" calc crc: ");
-            Serial.println(crcCalc, HEX);
+            Logger.Log(LOGLEVEL_DEBUG, "restored crc: %x calc crc: %x\n", crcRead, crcCalc );
         }
 
         if( (crcCalc == crcRead) || IGNORE_IF_CONDITION )
         {
-            eeRestoreString(  wlanSSID,                 EEPROM_POS_WLAN_SSID,       EEPROM_MAXLEN_WLAN_SSID );
+            eeprom.restoreString(  wlanSSID,                 EEPROM_POS_WLAN_SSID,       EEPROM_MAXLEN_WLAN_SSID );
 
             if( !beQuiet )
             {
-                Serial.print("restored SSID: ");
-                Serial.println(wlanSSID);
+                Logger.Log(LOGLEVEL_DEBUG, "restored SSID: %s\n", wlanSSID.c_str());
             }
 
-            eeRestoreString(  wlanPasswd,               EEPROM_POS_WLAN_PASSPHRASE, EEPROM_MAXLEN_WLAN_PASSPHRASE );
+            eeprom.restoreString(  wlanPasswd,               EEPROM_POS_WLAN_PASSPHRASE, EEPROM_MAXLEN_WLAN_PASSPHRASE );
 
             if( !beQuiet )
             {
-                Serial.print("restored Passphrase: ");
-                Serial.println(wlanPasswd);
+                Logger.Log(LOGLEVEL_DEBUG, "restored Passphrase: %s\n", wlanPasswd.c_str());
             }
 
-            eeRestoreString(  wwwServerIP,              EEPROM_POS_SERVER_IP,       EEPROM_MAXLEN_SERVER_IP );
+            eeprom.restoreString(  wwwServerIP,              EEPROM_POS_SERVER_IP,       EEPROM_MAXLEN_SERVER_IP );
 
             if( !beQuiet )
             {
-                Serial.print("restored ServerIP: ");
-                Serial.println(wwwServerIP);
+                Logger.Log(LOGLEVEL_DEBUG, "restored ServerIP: %s\n", wwwServerIP.c_str());
             }
 
-            eeRestoreString(  wwwServerPort,            EEPROM_POS_SERVER_PORT,     EEPROM_MAXLEN_SERVER_PORT );
+            eeprom.restoreString(  wwwServerPort,            EEPROM_POS_SERVER_PORT,     EEPROM_MAXLEN_SERVER_PORT );
 
             if( !beQuiet )
             {
-                Serial.print("restored ServerPort: ");
-                Serial.println(wwwServerPort);
+                Logger.Log(LOGLEVEL_DEBUG, "restored ServerPort: %s\n", wwwServerPort.c_str());
             }
 
-            eeRestoreString(  nodeName,                 EEPROM_POS_NODENAME,        EEPROM_MAXLEN_NODENAME );
+            eeprom.restoreString(  nodeName,                 EEPROM_POS_NODENAME,        EEPROM_MAXLEN_NODENAME );
 
             if( !beQuiet )
             {
-                Serial.print("restored Nodename: ");
-                Serial.println(nodeName);
+                Logger.Log(LOGLEVEL_DEBUG, "restored Nodename: %s\n", nodeName.c_str());
             }
 
-            eeRestoreString(  adminPasswd,              EEPROM_POS_ADMIN_PASSWORD,  EEPROM_MAXLEN_ADMIN_PASSWORD );
+            eeprom.restoreString(  adminPasswd,              EEPROM_POS_ADMIN_PASSWORD,  EEPROM_MAXLEN_ADMIN_PASSWORD );
 
             if( !beQuiet )
             {
-                Serial.print("restored adminPasswd: ");
-                Serial.println(adminPasswd);
+                Logger.Log(LOGLEVEL_DEBUG, "restored adminPasswd: %s\n", adminPasswd.c_str());
             }
 
-            eeRestoreBoolean( (char*) &useDhcp,         EEPROM_POS_USE_DHCP );
+            eeprom.restoreBoolean( (char*) &useDhcp,         EEPROM_POS_USE_DHCP );
 
             if( !beQuiet )
             {
-                Serial.print("restored useDHCP: ");
-                Serial.println(useDhcp);
+                Logger.Log(LOGLEVEL_DEBUG, "restored useDHCP: %d\n", useDhcp);
             }
 
             retVal = E_SUCCESS;
@@ -1096,7 +717,7 @@ String macToID(const uint8_t* mac)
     String result;
     for (int i = 0; i < 6; ++i) 
     {
-    result += String(mac[i], 16);
+        result += String(mac[i], 16);
     }
     result.toUpperCase();
     return result;
@@ -1148,110 +769,97 @@ int nodeStoreCOMSettings()
 
     if( !beQuiet )
     {
-        Serial.print("storing serial over network enable: ");
-        Serial.println(SerialOverNetwork);
+        Logger.Log(LOGLEVEL_DEBUG, "storing serial over network enable: %d\n", SerialOverNetwork);
     }
 
-    eeStoreBoolean( (char*) &SerialOverNetwork, EEPROM_POS_SON );
+    eeprom.storeBoolean( (char*) &SerialOverNetwork, EEPROM_POS_SON );
 
     if( !beQuiet )
     {
-        Serial.print("storing act as COM-Server: ");
-        Serial.println(COMServerMode);
+        Logger.Log(LOGLEVEL_DEBUG, "storing act as COM-Server: %d\n", COMServerMode);
     }
 
-    eeStoreBoolean( (char*) &COMServerMode, EEPROM_POS_COM_SERVER );
+    eeprom.storeBoolean( (char*) &COMServerMode, EEPROM_POS_COM_SERVER );
 
     if( !beQuiet )
     {
-        Serial.print("storing taget IP: ");
-        Serial.println(useTargetIP);
+        Logger.Log(LOGLEVEL_DEBUG, "storing taget IP: %s\n", useTargetIP.c_str());
     }
 
-    eeStoreString( useTargetIP, EEPROM_MAXLEN_TARGET_IP, EEPROM_POS_TARGET_IP );
+    eeprom.storeString( useTargetIP, EEPROM_MAXLEN_TARGET_IP, EEPROM_POS_TARGET_IP );
 
     if( !beQuiet )
     {
-        Serial.print("storing use TCP protcol: ");
-        Serial.println(COMProtocolTCP);
+        Logger.Log(LOGLEVEL_DEBUG, "storing use TCP protcol: %d\n", COMProtocolTCP);
     }
 
-    eeStoreBoolean( (char*) &COMProtocolTCP, EEPROM_POS_COM_PROTOCOL_TCP );
+    eeprom.storeBoolean( (char*) &COMProtocolTCP, EEPROM_POS_COM_PROTOCOL_TCP );
 
     if( !beQuiet )
     {
-        Serial.print("storing use serial hardware: ");
-        Serial.println(useHardSerial);
+        Logger.Log(LOGLEVEL_DEBUG, "storing use serial hardware: %d\n", useHardSerial);
     }
 
-    eeStoreBoolean( (char*) &useHardSerial, EEPROM_POS_COM_USE_HW_SERIAL );
+    eeprom.storeBoolean( (char*) &useHardSerial, EEPROM_POS_COM_USE_HW_SERIAL );
 
     if( !beQuiet )
     {
-        Serial.print("storing RxPin: ");
-        Serial.println(useRxPin);
+        Logger.Log(LOGLEVEL_DEBUG, "storing RxPin: %s\n", useRxPin.c_str());
     }
 
-    eeStoreString( useRxPin, EEPROM_MAXLEN_COM_USE_RX_GPIO, EEPROM_POS_COM_USE_RX_GPIO );
+    eeprom.storeString( useRxPin, EEPROM_MAXLEN_COM_USE_RX_GPIO, EEPROM_POS_COM_USE_RX_GPIO );
 
     if( !beQuiet )
     {
-        Serial.print("storing TxPin: ");
-        Serial.println(useTxPin);
+        Logger.Log(LOGLEVEL_DEBUG, "storing TxPin: %s\n", useTxPin.c_str());
     }
 
-    eeStoreString( useTxPin, EEPROM_MAXLEN_COM_USE_TX_GPIO, EEPROM_POS_COM_USE_TX_GPIO );
+    eeprom.storeString( useTxPin, EEPROM_MAXLEN_COM_USE_TX_GPIO, EEPROM_POS_COM_USE_TX_GPIO );
 
     if( !beQuiet )
     {
-        Serial.print("storing databits: ");
-        Serial.println(useDataBits);
+        Logger.Log(LOGLEVEL_DEBUG, "storing databits: %s\n", useDataBits.c_str());
     }
 
-    eeStoreString( useDataBits, EEPROM_MAXLEN_COM_USE_DATABITS, EEPROM_POS_COM_USE_DATABITS );
+    eeprom.storeString( useDataBits, EEPROM_MAXLEN_COM_USE_DATABITS, EEPROM_POS_COM_USE_DATABITS );
 
     if( !beQuiet )
     {
-        Serial.print("storing stopbits: ");
-        Serial.println(useStopBits);
+        Logger.Log(LOGLEVEL_DEBUG, "storing stopbits: %s\n", useStopBits.c_str());
     }
 
-    eeStoreString( useStopBits, EEPROM_MAXLEN_COM_USE_STOPBITS, EEPROM_POS_COM_USE_STOPBITS );
+    eeprom.storeString( useStopBits, EEPROM_MAXLEN_COM_USE_STOPBITS, EEPROM_POS_COM_USE_STOPBITS );
 
     if( !beQuiet )
     {
-        Serial.print("storing use flow control: ");
-        Serial.println(useFlowCtrl);
+        Logger.Log(LOGLEVEL_DEBUG, "storing use flow control: %d\n", useFlowCtrl);
     }
 
-    eeStoreBoolean( (char*) &useFlowCtrl, EEPROM_POS_COM_USE_FLOWCTRL );
+    eeprom.storeBoolean( (char*) &useFlowCtrl, EEPROM_POS_COM_USE_FLOWCTRL );
 
     if( !beQuiet )
     {
-        Serial.print("storing parity: ");
-        Serial.println(useParity);
+        Logger.Log(LOGLEVEL_DEBUG, "storing parity: %s\n", useParity.c_str());
     }
 
-    eeStoreString( useParity, EEPROM_MAXLEN_COM_USE_PARITY, EEPROM_POS_COM_USE_PARITY );
+    eeprom.storeString( useParity, EEPROM_MAXLEN_COM_USE_PARITY, EEPROM_POS_COM_USE_PARITY );
 
     if( !beQuiet )
     {
-        Serial.print("storing use baudrate: ");
-        Serial.println(useBaudRate);
+        Logger.Log(LOGLEVEL_DEBUG, "storing use baudrate: %s\n", useBaudRate.c_str());
     }
 
-    eeStoreString(  useBaudRate,   EEPROM_MAXLEN_COM_USE_BAUDRATE,  EEPROM_POS_COM_USE_BAUDRATE );
+    eeprom.storeString(  useBaudRate,   EEPROM_MAXLEN_COM_USE_BAUDRATE,  EEPROM_POS_COM_USE_BAUDRATE );
 
-    crcCalc = eeprom_crc( EEPROM_DATA_BEGIN, EEPROM_BLOCK_SIZE );
+    crcCalc = eeprom.crc( EEPROM_DATA_BEGIN, EEPROM_BLOCK_SIZE );
     if( !beQuiet )
     {
-        Serial.print("storing CRC: ");
-        Serial.println(crcCalc, HEX);
+        Logger.Log(LOGLEVEL_DEBUG, "storing CRC: %x\n", crcCalc);
     }
 
-    eeStoreRaw( (char*) &crcCalc, EEPROM_MAXLEN_CRC32, EEPROM_POS_CRC32 );
+    eeprom.storeRaw( (char*) &crcCalc, EEPROM_MAXLEN_CRC32, EEPROM_POS_CRC32 );
 
-    eeValidate();
+    eeprom.validate();
 
     return( retVal );
 }
@@ -1268,117 +876,102 @@ int nodeRestoreCOMSettings()
     unsigned long crcRead;
     String data = "";
 
-    if( eeIsValid() || IGNORE_IF_CONDITION )
+    if( eeprom.isValid() || IGNORE_IF_CONDITION )
     {
-        crcCalc = eeprom_crc( EEPROM_DATA_BEGIN, EEPROM_BLOCK_SIZE );
+        crcCalc = eeprom.crc( EEPROM_DATA_BEGIN, EEPROM_BLOCK_SIZE );
 
-        eeRestoreRaw( data, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
+        eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
         crcRead = atol(data.c_str());
 
         if( !beQuiet )
         {
-            Serial.print("restored crc: ");
-            Serial.print(crcRead, HEX);
-            Serial.print(" calc crc: ");
-            Serial.println(crcCalc, HEX);
+            Logger.Log(LOGLEVEL_DEBUG, "restored crc: %x calc crc: %x\n", crcRead, crcCalc);
         }
 
         if( (crcCalc == crcRead) || IGNORE_IF_CONDITION )
         {
-            eeRestoreBoolean( (char*) &SerialOverNetwork, EEPROM_POS_SON );
+            eeprom.restoreBoolean( (char*) &SerialOverNetwork, EEPROM_POS_SON );
 
             if( !beQuiet )
             {
-                Serial.print("restored serial over network enable: ");
-                Serial.println(SerialOverNetwork);
+                Logger.Log(LOGLEVEL_DEBUG, "restored serial over network enable: %d\n", SerialOverNetwork);
             }
 
-            eeRestoreBoolean( (char*) &COMServerMode, EEPROM_POS_COM_SERVER );
+            eeprom.restoreBoolean( (char*) &COMServerMode, EEPROM_POS_COM_SERVER );
 
             if( !beQuiet )
             {
-                Serial.print("restored act as COM-Server: ");
-                Serial.println(COMServerMode);
+                Logger.Log(LOGLEVEL_DEBUG, "restored act as COM-Server: %d\n", COMServerMode);
             }
 
-            eeRestoreString( useTargetIP, EEPROM_POS_TARGET_IP, EEPROM_MAXLEN_TARGET_IP );
+            eeprom.restoreString( useTargetIP, EEPROM_POS_TARGET_IP, EEPROM_MAXLEN_TARGET_IP );
 
             if( !beQuiet )
             {
-                Serial.print("restored taget IP: ");
-                Serial.println(useTargetIP);
+                Logger.Log(LOGLEVEL_DEBUG, "restored taget IP: %s\n", useTargetIP.c_str());
             }
 
-            eeRestoreBoolean( (char*) &COMProtocolTCP , EEPROM_POS_COM_PROTOCOL_TCP );
+            eeprom.restoreBoolean( (char*) &COMProtocolTCP , EEPROM_POS_COM_PROTOCOL_TCP );
 
             if( !beQuiet )
             {
-                Serial.print("restored use TCP protcol: ");
-                Serial.println(COMProtocolTCP);
+                Logger.Log(LOGLEVEL_DEBUG, "restored use TCP protcol: %d\n", COMProtocolTCP);
             }
 
-            eeRestoreBoolean( (char*) &useHardSerial, EEPROM_POS_COM_USE_HW_SERIAL );
+            eeprom.restoreBoolean( (char*) &useHardSerial, EEPROM_POS_COM_USE_HW_SERIAL );
 
             if( !beQuiet )
             {
-                Serial.print("restored use serial hardware: ");
-                Serial.println(useHardSerial);
+                Logger.Log(LOGLEVEL_DEBUG, "restored use serial hardware: %d\n", useHardSerial);
             }
 
-            eeRestoreString( useRxPin, EEPROM_POS_COM_USE_RX_GPIO, EEPROM_MAXLEN_COM_USE_RX_GPIO );
+            eeprom.restoreString( useRxPin, EEPROM_POS_COM_USE_RX_GPIO, EEPROM_MAXLEN_COM_USE_RX_GPIO );
 
             if( !beQuiet )
             {
-                Serial.print("restored RxPin: ");
-                Serial.println(useRxPin);
+                Logger.Log(LOGLEVEL_DEBUG, "restored RxPin: %s\n", useRxPin.c_str());
             }
 
-            eeRestoreString( useTxPin, EEPROM_POS_COM_USE_TX_GPIO, EEPROM_MAXLEN_COM_USE_TX_GPIO );
+            eeprom.restoreString( useTxPin, EEPROM_POS_COM_USE_TX_GPIO, EEPROM_MAXLEN_COM_USE_TX_GPIO );
 
             if( !beQuiet )
             {
-                Serial.print("restored TxPin: ");
-                Serial.println(useTxPin);
+                Logger.Log(LOGLEVEL_DEBUG, "restored TxPin: %s\n", useTxPin.c_str());
             }
 
-            eeRestoreString( useDataBits, EEPROM_POS_COM_USE_DATABITS, EEPROM_MAXLEN_COM_USE_DATABITS );
+            eeprom.restoreString( useDataBits, EEPROM_POS_COM_USE_DATABITS, EEPROM_MAXLEN_COM_USE_DATABITS );
 
             if( !beQuiet )
             {
-                Serial.print("restored databits: ");
-                Serial.println(useDataBits);
+                Logger.Log(LOGLEVEL_DEBUG, "restored databits: %s\n", useDataBits.c_str());
             }
 
-            eeRestoreString( useStopBits,  EEPROM_POS_COM_USE_STOPBITS, EEPROM_MAXLEN_COM_USE_STOPBITS );
+            eeprom.restoreString( useStopBits,  EEPROM_POS_COM_USE_STOPBITS, EEPROM_MAXLEN_COM_USE_STOPBITS );
 
             if( !beQuiet )
             {
-                Serial.print("restored stopbits: ");
-                Serial.println(useStopBits);
+                Logger.Log(LOGLEVEL_DEBUG, "restored stopbits: %s\n", useStopBits.c_str());
             }
 
-            eeRestoreBoolean( (char*) &useFlowCtrl, EEPROM_POS_COM_USE_FLOWCTRL );
+            eeprom.restoreBoolean( (char*) &useFlowCtrl, EEPROM_POS_COM_USE_FLOWCTRL );
 
             if( !beQuiet )
             {
-                Serial.print("restored use flow control: ");
-                Serial.println(useFlowCtrl);
+                Logger.Log(LOGLEVEL_DEBUG, "restored use flow control: %d\n", useFlowCtrl);
             }
 
-            eeRestoreString( useParity,  EEPROM_POS_COM_USE_PARITY, EEPROM_MAXLEN_COM_USE_PARITY );
+            eeprom.restoreString( useParity,  EEPROM_POS_COM_USE_PARITY, EEPROM_MAXLEN_COM_USE_PARITY );
 
             if( !beQuiet )
             {
-                Serial.print("restored parity: ");
-                Serial.println(useParity);
+                Logger.Log(LOGLEVEL_DEBUG, "restored parity: %s\n", useParity.c_str());
             }
 
-            eeRestoreString(  useBaudRate,     EEPROM_POS_COM_USE_BAUDRATE, EEPROM_MAXLEN_COM_USE_BAUDRATE );
+            eeprom.restoreString(  useBaudRate,     EEPROM_POS_COM_USE_BAUDRATE, EEPROM_MAXLEN_COM_USE_BAUDRATE );
 
             if( !beQuiet )
             {
-                Serial.print("restored use baudrate: ");
-                Serial.println(useBaudRate);
+                Logger.Log(LOGLEVEL_DEBUG, "restored use baudrate: %s\n", useBaudRate.c_str());
             }
     
 
@@ -1545,7 +1138,7 @@ void dumpInfo()
     
 //    if( !beQuiet )
 //    {
-//        Serial.println(pageContent);
+//        Logger.Log(LOGLEVEL_DEBUG, "%s\n", pageContent.c_str());
 //    }
 }
 //
@@ -1773,17 +1366,17 @@ void SetupSON()
     {
         if( !beQuiet )
         {
-            Serial.println("SetupSON -> start server");
+            Logger.Log(LOGLEVEL_DEBUG,"SetupSON -> start server");
         }      
 //        pTelnetServer = new WiFiServer(SON_SERVER_PORT);
         if( !beQuiet )
         {
-            Serial.println("SetupSON -> server started");
+            Logger.Log(LOGLEVEL_DEBUG, "SetupSON -> server started\n");
         }      
         TelnetServer.setNoDelay(true);
         if( !beQuiet )
         {
-            Serial.println("SetupSON -> nodelay set");
+            Logger.Log(LOGLEVEL_DEBUG,"SetupSON -> nodelay set\n");
         }              
         TelnetServer.begin();
     }
@@ -1792,7 +1385,7 @@ void SetupSON()
 //        IPAddress targetServer = IPAddress.fromString(useTargetIP);
           if( !beQuiet )
           {
-              Serial.println("try to connect to server");
+              Logger.Log(LOGLEVEL_DEBUG,"try to connect to server\n");
           }
 
         IPAddress targetServer;
@@ -1801,7 +1394,7 @@ void SetupSON()
         {
             if( !beQuiet )
             {
-                Serial.println("connected");
+                Logger.Log(LOGLEVEL_DEBUG,"connected\n");
             }
             SONConnected = true;
         }
@@ -1843,25 +1436,43 @@ void setup()
 
     // startup serial console ...
     Serial.begin(SERIAL_BAUD);
-    delay(1);
+    Logger.Init(LOGLEVEL_DEBUG, &Serial);
 
-    EEPROM.begin(EEPROM_BLOCK_SIZE);
-
-    if( eeIsValid() )
+//  if( eeprom.init( 1024, 0x00, LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )  
+    if( eeprom.init( 1024, eeprom.version2Magic(), LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )  
     {
+      if( eeprom.isValid() )
+      {
         if( !beQuiet )
         {
-            Serial.println("eeprom content is valid");
-            nodeRestoreAdminSettings();
-            nodeRestoreCOMSettings();
+            Logger.Log(LOGLEVEL_DEBUG,"eeprom content is valid\n");
         }
+
+        nodeRestoreAdminSettings();
+        nodeRestoreCOMSettings();
+      }
+      else
+      {
+        if( !beQuiet )
+        {
+            Logger.Log(LOGLEVEL_DEBUG,"INVALID eeprom content!\n");
+            Logger.Log(LOGLEVEL_DEBUG,"reset node to factory settings.\n");
+        }
+        // if eeprom has no valid signature set node data to factory defaults
+        //
+        resetAdmin2FactorySettings();
+        nodeStoreAdminSettings();
+
+        resetCOM2FactorySettings();
+        nodeStoreCOMSettings();
+      }
     }
     else
     {
         if( !beQuiet )
         {
-            Serial.println("INVALID eeprom content!");
-            Serial.println("reset node to factory settings.");
+            Logger.Log(LOGLEVEL_DEBUG,"INVALID eeprom content!\n");
+            Logger.Log(LOGLEVEL_DEBUG,"reset node to factory settings.\n");
         }
         // if eeprom has no valid signature set node data to factory defaults
         //
@@ -1874,8 +1485,7 @@ void setup()
 
     if( !beQuiet )
     {
-        Serial.print("EEPROM in use: ");
-        Serial.println(EEPROM_DATA_END);
+        Logger.Log(LOGLEVEL_DEBUG, "EEPROM in use: %d\n", EEPROM_DATA_END);
     }
 
     if( wlanSSID.length() > 0 &&
@@ -1883,12 +1493,8 @@ void setup()
     {
         if( !beQuiet )
         {
-            Serial.println();
-            Serial.print("Connecting to >");
-            Serial.print(wlanSSID);
-            Serial.print("< password from eeprom is >");
-            Serial.print(wlanPasswd);
-            Serial.println("<\n");
+            Logger.Log(LOGLEVEL_DEBUG, "Connecting to >%s< password from eeprom is >%s<\n", 
+                wlanSSID.c_str(), wlanPasswd.c_str());
         }
 
         // Connect to WiFi network
@@ -1900,11 +1506,10 @@ void setup()
             delay(500);
             if( !beQuiet )
             {
-                Serial.print(".");
+                Logger.Log(LOGLEVEL_DEBUG, ".");
             }
         }
-        Serial.println("");
-        Serial.println("WiFi connected");
+        Logger.Log(LOGLEVEL_DEBUG,"WiFi connected\n");
     }
 
     server = ESP8266WebServer( wwwServerPort.toInt() );
@@ -1921,11 +1526,7 @@ void setup()
 
     if( !beQuiet )
     {
-        Serial.print("Webserver started. URL is: ");
-        Serial.print("http://");
-        Serial.print(localIP);
-        Serial.print(":");
-        Serial.println(wwwServerPort);
+        Logger.Log(LOGLEVEL_DEBUG, "Webserver started. URL is: http://%s:%s\n", wwwServerIP.c_str(), wwwServerPort.c_str());
     }
  
     pageContent = "";
@@ -1939,10 +1540,18 @@ void setup()
     {
         if( !beQuiet )
         {
-            Serial.println("setup -> SON active -> setup and start SON");
+            Logger.Log(LOGLEVEL_DEBUG, "setup -> SON active -> setup and start SON\n");
+            Logger.Log(LOGLEVEL_DEBUG, "setup -> switch off logging!\n");
         }
+        Logger.SetLevel (LOGLEVEL_QUIET );
+
         SetupSON();
         StartSON();
+    }
+    else
+    {
+//        Logger.Log(LOGLEVEL_DEBUG, "setup -> SON is off but switch off logging!\n");
+//        Logger.SetLevel (LOGLEVEL_QUIET );
     }
 }
 //
@@ -1960,7 +1569,7 @@ void handleLoginPage()
     {
         if( !beQuiet )
         {
-            Serial.println("handleLoginPage -> handleAdminPage");
+            Logger.Log(LOGLEVEL_DEBUG,"handleLoginPage -> handleAdminPage\n");
         }
         handleAdminPage();
     }
@@ -1969,12 +1578,10 @@ void handleLoginPage()
 
         if( !beQuiet )
         {
-            Serial.println("handleLoginPage");
+            Logger.Log(LOGLEVEL_DEBUG,"handleLoginPage\n");
             for(int i = 0; i < server.args(); i++ )
             {
-                Serial.print( server.argName(i) );
-                Serial.print( " = " );
-                Serial.println( server.arg(i) );
+                Logger.Log(LOGLEVEL_DEBUG,"%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
             }
         }
 
@@ -1982,7 +1589,7 @@ void handleLoginPage()
         {
             if( !beQuiet )
             {
-                Serial.println("POST REQUEST");
+                Logger.Log(LOGLEVEL_DEBUG,"POST REQUEST\n");
             }
             // form contains user input and has been postet
             // to server
@@ -2004,7 +1611,7 @@ void handleLoginPage()
         {
             if( !beQuiet )
             {
-                Serial.println("GET REQUEST");
+                Logger.Log(LOGLEVEL_DEBUG,"GET REQUEST\n");
             }
 
             pageContent  = "<!DOCTYPE html>\r";
@@ -2048,13 +1655,11 @@ void getAdminInputValues()
 {
     if( !beQuiet )
     {
-        Serial.println("getAdminInputValues");
+        Logger.Log(LOGLEVEL_DEBUG,"getAdminInputValues\n");
 
             for(int i = 0; i < server.args(); i++ )
             {
-                Serial.print( server.argName(i) );
-                Serial.print( " = " );
-                Serial.println( server.arg(i) );
+                Logger.Log(LOGLEVEL_DEBUG,"%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
             }
     }
     // Store user values an do other funny things ...
@@ -2097,7 +1702,7 @@ void getAdminInputValues()
         {
             if( !beQuiet )
             {
-                Serial.println("Admin password changed ... reset autologin flag");
+                Logger.Log(LOGLEVEL_DEBUG,"Admin password changed ... reset autologin flag\n");
             }
             adminAccessSucceeded = false;
         }
@@ -2119,12 +1724,10 @@ void handleAdminPage()
 
    if( !beQuiet )
    {
-       Serial.println("handleAdminPage");
+       Logger.Log(LOGLEVEL_DEBUG,"handleAdminPage\n");
        for(int i = 0; i < server.args(); i++ )
        {
-           Serial.print( server.argName(i) );
-           Serial.print( " = " );
-           Serial.println( server.arg(i) );
+                Logger.Log(LOGLEVEL_DEBUG,"%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
        }
    }
 
@@ -2374,26 +1977,23 @@ void handleIndexPage(void)
 {
     String indexAction = "";
 
-// Serial.println(WiFi.macAddress());
-// Serial.println(WiFi.localIP());
-// WiFi.printDiag(Serial);
+// Logger.Log(LOGLEVEL_DEBUG, "%s\n", WiFi.macAddress().c_str());
+// -> das hier NOCH KEINESFALLS aktivieren! WiFi.Log(LOGLEVEL_DEBUG,Diag(Serial);
 
-// Serial.println(ESP.getFreeHeap());
-// Serial.println(ESP.getChipId());
-// Serial.println(ESP.getFlashChipId());
-// Serial.println(ESP.getFlashChipSize());
-// Serial.println(ESP.getFlashChipSpeed());
-// Serial.println(ESP.getCycleCount());
-// Serial.println(ESP.getVcc());
+// Logger.Log(LOGLEVEL_DEBUG, "%d\n",ESP.getFreeHeap());
+// Logger.Log(LOGLEVEL_DEBUG, "%d\n", ESP.getChipId());
+// Logger.Log(LOGLEVEL_DEBUG, "%d\n", ESP.getFlashChipId());
+// Logger.Log(LOGLEVEL_DEBUG, "%d\n", ESP.getFlashChipSize());
+// Logger.Log(LOGLEVEL_DEBUG, "%d\n", ESP.getFlashChipSpeed());
+// Logger.Log(LOGLEVEL_DEBUG, "%d\n", ESP.getCycleCount());
+// Logger.Log(LOGLEVEL_DEBUG, "%d\n", ESP.getVcc());
 
     if( !beQuiet )
     {
-        Serial.println("handleIndexPage");
+        Logger.Log(LOGLEVEL_DEBUG,"handleIndexPage");
         for(int i = 0; i < server.args(); i++ )
         {
-            Serial.print( server.argName(i) );
-            Serial.print( " = " );
-            Serial.println( server.arg(i) );
+                Logger.Log(LOGLEVEL_DEBUG,"%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
         }
     }
 
@@ -2403,15 +2003,13 @@ void handleIndexPage(void)
     {
         if( !beQuiet )
         {
-            Serial.println("POST REQUEST");
+            Logger.Log(LOGLEVEL_DEBUG,"POST REQUEST\n");
             // form contains user input and has been postet
             // to server
 
             for(int i = 0; i < server.args(); i++ )
             {
-                Serial.print( server.argName(i) );
-                Serial.print( " = " );
-                Serial.println( server.arg(i) );
+                Logger.Log(LOGLEVEL_DEBUG,"%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
             }
         }
 
@@ -2441,7 +2039,7 @@ void handleIndexPage(void)
     {
         if( !beQuiet )
         {
-            Serial.println("GET REQUEST");
+            Logger.Log(LOGLEVEL_DEBUG,"GET REQUEST\n");
         }
         pageContent = "<!DOCTYPE html>";
         pageContent += "<html>";
@@ -2483,12 +2081,10 @@ void sendAuthFailedPage()
 
     if( !beQuiet )
     {
-        Serial.println("sendAuthFailedPage");
+        Logger.Log(LOGLEVEL_DEBUG,"sendAuthFailedPage\n");
            for(int i = 0; i < server.args(); i++ )
            {
-                Serial.print( server.argName(i) );
-                Serial.print( " = " );
-                Serial.println( server.arg(i) );
+                Logger.Log(LOGLEVEL_DEBUG,"%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
            }
     }
 
@@ -2511,7 +2107,7 @@ void sendAuthFailedPage()
     {
         if( !beQuiet )
         {
-            Serial.println("POST REQUEST");
+            Logger.Log(LOGLEVEL_DEBUG,"POST REQUEST\n");
         }
         pageContent  = "<!DOCTYPE html>";
         pageContent += "<html>";
@@ -2557,7 +2153,7 @@ void getComInputValues()
 
     if( !beQuiet )
     {
-        Serial.println("getComInputValues ...");
+        Logger.Log(LOGLEVEL_DEBUG,"getComInputValues ...\n");
     }
 
     btnValue = server.arg(COM_RADIONAME_SON);
@@ -2594,9 +2190,7 @@ void getComInputValues()
 
         if( !beQuiet )
         {
-            Serial.println();
-            Serial.print("COMServerMode is now set to");
-            Serial.println(COMServerMode);
+            Logger.Log(LOGLEVEL_DEBUG, "COMServerMode is now set to %d\n", COMServerMode);
         }
 
     }
@@ -2704,12 +2298,10 @@ void handleComSettings()
 
     if( !beQuiet )
     {
-        Serial.println("handleComSettings");
+        Logger.Log(LOGLEVEL_DEBUG,"handleComSettings\n");
            for(int i = 0; i < server.args(); i++ )
            {
-                Serial.print( server.argName(i) );
-                Serial.print( " = " );
-                Serial.println( server.arg(i) );
+                Logger.Log(LOGLEVEL_DEBUG,"%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
            }
     }
 
@@ -3825,7 +3417,7 @@ void loop()
                 {
                     if( !beQuiet )
                     {
-                        Serial.println("Client has dropped Connection");              
+                        Logger.Log(LOGLEVEL_DEBUG,"Client has dropped Connection\n");              
                     }
 
                     incomingTelnetConnection.stop();
@@ -3833,7 +3425,7 @@ void loop()
 
                     if( !beQuiet )
                     {
-                        Serial.println("free'd IP slot for new client to connect");                
+                        Logger.Log(LOGLEVEL_DEBUG,"free'd IP slot for new client to connect\n");                
                     }
                 } 
             }
@@ -3847,14 +3439,14 @@ void loop()
             {
                 if( !beQuiet )
                 {
-                    Serial.println("Connection request");          
+                    Logger.Log(LOGLEVEL_DEBUG,"Connection request\n");          
                 }
 
                 if( !SONConnected )
                 {
                     if( !beQuiet )
                     {
-                        Serial.println("SON is NOT connected");              
+                        Logger.Log(LOGLEVEL_DEBUG,"SON is NOT connected\n");              
                     }
                     incomingTelnetConnection = TelnetServer.available();
                     SONConnected = true;
@@ -3883,7 +3475,7 @@ void loop()
             {
                 if( !beQuiet )
                 {
-                    Serial.println("try to connect to server");
+                    Logger.Log(LOGLEVEL_DEBUG,"try to connect to server\n");
                 }
 
                 IPAddress targetServer;
@@ -3892,7 +3484,7 @@ void loop()
                 {
                     if( !beQuiet )
                     {
-                        Serial.println("connected");
+                        Logger.Log(LOGLEVEL_DEBUG,"connected\n");
                     }
                     SONConnected = true;
                 }
@@ -3903,7 +3495,7 @@ void loop()
                 {
                     if( !beQuiet )
                     {
-                        Serial.println("Server has dropped Connection");              
+                        Logger.Log(LOGLEVEL_DEBUG,"Server has dropped Connection\n");              
                     }
 
                     outgoingTelnetConnection.stop();
