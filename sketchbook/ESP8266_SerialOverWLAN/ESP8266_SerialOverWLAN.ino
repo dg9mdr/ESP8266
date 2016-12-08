@@ -1672,7 +1672,7 @@ void handleLoginPage()
             pageContent += "<meta charset=\"utf-8\" />\r";
             pageContent += "<title>Administrator</title>\r";
             pageContent += "</head>\r";
-            pageContent += "<body bgcolor=\"#00C9FF\" text=\"#FDFF00\" link=\"#FF0200\" vlink=\"#A900FF\" alink=\"#20FF00\">\r";
+            pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\" alink=\"#20FF00\">\r";
             pageContent += "<div align=\"center\"><strong><h1>Administrator account</h1></strong></div>\r";
             pageContent += "<form action=\"/login\" method=\"post\">\r";
             pageContent += "<table align=\"center\">\r";
@@ -1854,7 +1854,7 @@ void handleAdminPage()
         pageContent += "<meta charset=\"utf-8\" />\n";
         pageContent += "<title>ESP8266 Settings</title>\n";
         pageContent += "</head>\n";
-        pageContent += "<body bgcolor=\"#00C9FF\" text=\"#FDFF00\" link=\"#FF0200\" vlink=\"#A900FF\" alink=\"#20FF00\">\n";
+        pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\" alink=\"#20FF00\">\n";
         pageContent += "<div align=\"center\"><strong><h1>Change settings for this node</h1></strong></div>\n";
         pageContent += "<form action=\"/admin\" method=\"post\">\n";
         pageContent += "<table align=\"center\">\n";
@@ -2099,7 +2099,7 @@ void handleIndexPage(void)
         pageContent += "<meta charset=\"utf-8\" />";
         pageContent += "<title>Home</title>";
         pageContent += "</head>";
-        pageContent += "<body bgcolor=\"#00C9FF\" text=\"#FDFF00\" link=\"#FF0200\" vlink=\"#A900FF\" alink=\"#20FF00\">";
+        pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\" alink=\"#20FF00\">";
         pageContent += "<div align=\"center\"><strong><h1>node home</h1></strong></div>";
 
         pageContent += "<hr align=\"center\"><br>";
@@ -2167,7 +2167,7 @@ void sendAuthFailedPage()
         pageContent += "<meta charset=\"utf-8\" />";
         pageContent += "<title>Administrator</title>";
         pageContent += "</head>";
-        pageContent += "<body bgcolor=\"#00C9FF\" text=\"#FDFF00\" link=\"#FF0200\" vlink=\"#A900FF\" alink=\"#20FF00\">";
+        pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\" alink=\"#20FF00\">";
         pageContent += "<div align=\"center\"><strong><h1 style=\"color: #FF0000; \">Authorization failed!</h1></strong></div>";
         pageContent += "<form action=\"/login\" method=\"post\">";
         pageContent += "<table align=\"center\">";
@@ -2406,8 +2406,8 @@ void handleComSettings()
         pageContent += "<meta charset=\"utf-8\" />\n";
         pageContent += "<title>COM Setup</title>\n";
         pageContent += "</head>\n";
-        pageContent += "<body bgcolor=\"#00C9FF\" text=\"#FDFF00\"";
-        pageContent += "link=\"#FF0200\" vlink=\"#A900FF\" alink=\"#20FF00\">\n";
+        pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\"";
+        pageContent += "link=\"#1E90FF\" vlink=\"#0000FF\" alink=\"#20FF00\">\n";
         pageContent += "<div align=\"center\"><strong>";
         pageContent += "<h1>Change local COM port settings</h1></strong></div>\n";
 //        pageContent += "<form action=\"/comsettings\" method=\"get\">\n";
