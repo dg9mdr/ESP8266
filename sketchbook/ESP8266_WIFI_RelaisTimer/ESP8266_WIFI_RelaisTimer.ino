@@ -60,6 +60,7 @@
 //
 // 2016/10/28: initial version 
 // 2016/12/08: added flag handling
+// 2016/12/12: added functions for web-update 
 // 
 //
 // ************************************************************************
@@ -86,6 +87,8 @@ bool beQuiet;
 #include "PCF8574.h"
 #include <Wire.h>
 
+#include <ESP8266HTTPClient.h>
+#include <ESP8266httpUpdate.h>
 
 #define __ASSERT_USE_STDERR     // 
 #include <assert.h>             // for future use
@@ -104,6 +107,7 @@ bool beQuiet;
 #define DEFAULT_UDP_LISTENPORT		8888
 #define DEFAULT_WLAN_SSID               ""
 #define DEFAULT_WLAN_PASSPHRASE         ""
+
 #define DEAULT_NTP_SERVERNAME		"us.pool.ntp.org"
 
 #define DEFAULT_USE_DHCP                true
@@ -159,6 +163,55 @@ static String ntpServerPort;
 // ************************************************************************
 //
 static String wlanSSID;
+//
+// ************************************************************************
+// setup for  online-updates
+// ************************************************************************
+//
+static String updateUrl;
+static String lastRelease;
+static String lastVersion;
+static String lastPatchlevel;
+//
+static String lastNumber;
+//
+static String nextUpdateMonth;
+static String nextUpdateDay;
+static String nextUpdateWeekDay;
+static String nextUpdateHour;
+static String nextUpdateMinute;
+static String updateInterval;
+static String updateMode;
+//
+#define EEPROM_MAXLEN_UPDATE_URL         45
+#define EEPROM_MAXLEN_LAST_RELEASE        2
+#define EEPROM_MAXLEN_LAST_VERSION        2
+#define EEPROM_MAXLEN_LAST_PATCHLEVEL     2
+//
+#define EEPROM_MAXLEN_LAST_NUMBER         2
+//
+#define EEPROM_MAXLEN_NEXT_UPDATE_MONTH   2
+#define EEPROM_MAXLEN_NEXT_UPDATE_DAY     2
+#define EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY 2
+#define EEPROM_MAXLEN_NEXT_UPDATE_HOUR    2
+#define EEPROM_MAXLEN_NEXT_UPDATE_MINUTE  2
+//
+#define EEPROM_MAXLEN_UPDATE_INTERVAL     2
+#define EEPROM_MAXLEN_UPDATE_MODE         2
+//
+//
+#define DEFAULT_UPDATE_URL              "http://192.168.1.122/ESP8266/firmware.bin"
+#define DEFAULT_UPDATE_LAST_RELEASE     "0"
+#define DEFAULT_UPDATE_LAST_VERSION     "0"
+#define DEFAULT_UPDATE_LAST_PATCHLEVEL  "0"
+#define DEFAULT_UPDATE_LAST_NUMBER      "0"
+#define DEFAULT_UPDATE_NEXT_MONTH       "0"
+#define DEFAULT_UPDATE_NEXT_DAY         "0"
+#define DEFAULT_UPDATE_NEXT_WEEKDAY     "0"
+#define DEFAULT_UPDATE_NEXT_HOUR        "0"
+#define DEFAULT_UPDATE_NEXT_MINUTE      "0"
+#define DEFAULT_UPDATE_INTERVAL         "0"
+#define DEFAULT_UPDATE_MODE             "0"
 //
 // ************************************************************************
 // setup passphrase for local WLAN
@@ -250,8 +303,24 @@ dsEeprom eeprom;
 
 #define EEPROM_ACTION_TBL_ENTRY_END    (EEPROM_POS_TBL_EXT2_ENABLED + EEPROM_MAXLEN_TBL_EXT_ENABLED + EEPROM_LEADING_LENGTH)
 #define EEPROM_ACTION_TBL_ENTRY_LENGTH (EEPROM_ACTION_TBL_ENTRY_END - EEPROM_ACTION_TBL_ENTRY_START)
-#define EEPROM_EXT_DATA_END            (EEPROM_ACTION_TBL_ENTRY_START + (EEPROM_ACTION_TBL_ENTRY_LENGTH * MAX_ACTION_TABLE_LINES))
+// #define EEPROM_EXT_DATA_END            (EEPROM_ACTION_TBL_ENTRY_START + (EEPROM_ACTION_TBL_ENTRY_LENGTH * MAX_ACTION_TABLE_LINES))
+//
+//
+//
+#define EEPROM_POS_UPDATE_URL            (EEPROM_ACTION_TBL_ENTRY_START + (EEPROM_ACTION_TBL_ENTRY_LENGTH * MAX_ACTION_TABLE_LINES))
+#define EEPROM_POS_LAST_RELEASE          (EEPROM_POS_UPDATE_URL          + EEPROM_MAXLEN_UPDATE_URL          + EEPROM_LEADING_LENGTH)
+#define EEPROM_POS_LAST_VERSION          (EEPROM_POS_LAST_RELEASE        + EEPROM_MAXLEN_LAST_RELEASE        + EEPROM_LEADING_LENGTH)
+#define EEPROM_POS_LAST_PATCHLEVEL       (EEPROM_POS_LAST_VERSION        + EEPROM_MAXLEN_LAST_VERSION        + EEPROM_LEADING_LENGTH)
+#define EEPROM_POS_LAST_NUMBER           (EEPROM_POS_LAST_PATCHLEVEL     + EEPROM_MAXLEN_LAST_PATCHLEVEL     + EEPROM_LEADING_LENGTH)
+#define EEPROM_POS_NEXT_UPDATE_MONTH     (EEPROM_POS_LAST_NUMBER         + EEPROM_MAXLEN_LAST_NUMBER         + EEPROM_LEADING_LENGTH)
+#define EEPROM_POS_NEXT_UPDATE_DAY       (EEPROM_POS_NEXT_UPDATE_MONTH   + EEPROM_MAXLEN_NEXT_UPDATE_MONTH   + EEPROM_LEADING_LENGTH)
+#define EEPROM_POS_NEXT_UPDATE_WEEKDAY   (EEPROM_POS_NEXT_UPDATE_DAY     + EEPROM_MAXLEN_NEXT_UPDATE_DAY     + EEPROM_LEADING_LENGTH)
+#define EEPROM_POS_NEXT_UPDATE_HOUR      (EEPROM_POS_NEXT_UPDATE_WEEKDAY + EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY + EEPROM_LEADING_LENGTH)
+#define EEPROM_POS_NEXT_UPDATE_MINUTE    (EEPROM_POS_NEXT_UPDATE_HOUR    + EEPROM_MAXLEN_NEXT_UPDATE_HOUR    + EEPROM_LEADING_LENGTH)
+#define EEPROM_POS_UPDATE_INTERVAL       (EEPROM_POS_NEXT_UPDATE_MINUTE  + EEPROM_MAXLEN_NEXT_UPDATE_MINUTE  + EEPROM_LEADING_LENGTH)
+#define EEPROM_POS_UPDATE_MODE           (EEPROM_POS_UPDATE_INTERVAL     + EEPROM_MAXLEN_UPDATE_INTERVAL     + EEPROM_LEADING_LENGTH)
 
+#define EEPROM_EXT_DATA_END              (EEPROM_POS_UPDATE_MODE         + EEPROM_MAXLEN_UPDATE_MODE         + EEPROM_LEADING_LENGTH)
 
 #if not defined (EEPROM_EXT_DATA_END)
 #define EEPROM_EXT_DATA_END      EEPROM_MAX_SIZE
@@ -655,6 +724,7 @@ void sendNTPpacket(IPAddress &address, byte packetBuffer[])
 //
 // ---------- load and handle setup page ----
 //
+void apiPage();
 void setupPage();
 void doCreateLine( int tmRow );
 void doTimeSelect( int tmNum, int tmRow, char* sRow );
@@ -1229,9 +1299,204 @@ int restoreActionTable()
 
 }
 
+//
+// ------------------------------------------------------------------------
+//
+// ---------- store update info to EEPROM
+//
+// ------------------------------------------------------------------------
+//
+int storeUpdateInfo()
+{
+    int retVal = 0;
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing Update-URL: %s to [%d]\n", updateUrl.c_str(), EEPROM_POS_UPDATE_URL);
+    }
+    eeprom.storeString( updateUrl,         EEPROM_MAXLEN_UPDATE_URL,           EEPROM_POS_UPDATE_URL);
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing last release: %s to [%d]\n", lastRelease.c_str(), EEPROM_POS_LAST_RELEASE);
+    }
+    eeprom.storeString( lastRelease,       EEPROM_MAXLEN_LAST_RELEASE,         EEPROM_POS_LAST_RELEASE);
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing last version: %s to [%d]\n", lastVersion.c_str(), EEPROM_POS_LAST_VERSION);
+    }
+    eeprom.storeString( lastVersion,       EEPROM_MAXLEN_LAST_VERSION,         EEPROM_POS_LAST_VERSION);
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing last patchlevel: %s to [%d]\n", lastPatchlevel.c_str(), EEPROM_POS_LAST_PATCHLEVEL);
+    }
+    eeprom.storeString( lastPatchlevel,    EEPROM_MAXLEN_LAST_PATCHLEVEL,      EEPROM_POS_LAST_PATCHLEVEL);
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing last number: %s to [%d]\n", lastNumber.c_str(), EEPROM_POS_LAST_NUMBER);
+    }
+    eeprom.storeString( lastNumber,        EEPROM_MAXLEN_LAST_NUMBER,          EEPROM_POS_LAST_NUMBER);
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing next update month: %s to [%d]\n", nextUpdateMonth.c_str(), EEPROM_POS_NEXT_UPDATE_MONTH);
+    }
+    eeprom.storeString( nextUpdateMonth,   EEPROM_MAXLEN_NEXT_UPDATE_MONTH,    EEPROM_POS_NEXT_UPDATE_MONTH);
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing next update day: %s to [%d]\n", nextUpdateDay.c_str(), EEPROM_POS_NEXT_UPDATE_DAY);
+    }
+    eeprom.storeString( nextUpdateDay,     EEPROM_MAXLEN_NEXT_UPDATE_DAY,      EEPROM_POS_NEXT_UPDATE_DAY);
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing next update meekday: %s to [%d]\n", nextUpdateWeekDay.c_str(), EEPROM_POS_NEXT_UPDATE_WEEKDAY);
+    }
+    eeprom.storeString( nextUpdateWeekDay, EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY,  EEPROM_POS_NEXT_UPDATE_WEEKDAY);
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing next update hour: %s to [%d]\n", nextUpdateHour.c_str(), EEPROM_POS_NEXT_UPDATE_HOUR);
+    }
+    eeprom.storeString( nextUpdateHour,    EEPROM_MAXLEN_NEXT_UPDATE_HOUR,     EEPROM_POS_NEXT_UPDATE_HOUR);
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing next update minute: %s to [%d]\n", nextUpdateMinute.c_str(), EEPROM_POS_NEXT_UPDATE_MINUTE);
+    }
+    eeprom.storeString( nextUpdateMinute,  EEPROM_MAXLEN_NEXT_UPDATE_MINUTE,   EEPROM_POS_NEXT_UPDATE_MINUTE);
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing update interval: %s to [%d]\n", updateInterval.c_str(), EEPROM_POS_UPDATE_INTERVAL);
+    }
+    eeprom.storeString( updateInterval,    EEPROM_MAXLEN_UPDATE_INTERVAL,      EEPROM_POS_UPDATE_INTERVAL);
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "storing uopdate mode: %s to [%d]\n", updateMode.c_str(), EEPROM_POS_UPDATE_MODE);
+    }
+    eeprom.storeString( updateMode,        EEPROM_MAXLEN_UPDATE_MODE,          EEPROM_POS_UPDATE_MODE);
+
+    eeprom.validate();
+    
+    return( retVal );
+
+}
+   
+//
+// ------------------------------------------------------------------------
+//
+// ---------- restore update info from EEPROM
+//
+// ------------------------------------------------------------------------
+//
+int restoreUpdateInfo()
+{
+    int retVal = 0;
+
+    eeprom.restoreString( updateUrl,         EEPROM_POS_UPDATE_URL,           EEPROM_MAXLEN_UPDATE_URL);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored update URL: %s\n", updateUrl.c_str());
+    }
+
+    eeprom.restoreString( lastRelease,       EEPROM_POS_LAST_RELEASE,         EEPROM_MAXLEN_LAST_RELEASE);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored last release: %s\n", lastRelease.c_str());
+    }
+
+    eeprom.restoreString( lastVersion,       EEPROM_POS_LAST_VERSION,         EEPROM_MAXLEN_LAST_VERSION);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored last version: %s\n", lastVersion.c_str());
+    }
+
+    eeprom.restoreString( lastPatchlevel,    EEPROM_POS_LAST_PATCHLEVEL,      EEPROM_MAXLEN_LAST_PATCHLEVEL);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored last patchlevel: %s\n", lastPatchlevel.c_str());
+    }
+
+    eeprom.restoreString( lastNumber,        EEPROM_POS_LAST_NUMBER,          EEPROM_MAXLEN_LAST_NUMBER);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored last number: %s\n", lastNumber.c_str());
+    }
+
+    eeprom.restoreString( nextUpdateMonth,   EEPROM_POS_NEXT_UPDATE_MONTH,    EEPROM_MAXLEN_NEXT_UPDATE_MONTH);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored next update month: %s\n", nextUpdateMonth.c_str());
+    }
+
+    eeprom.restoreString( nextUpdateDay,     EEPROM_POS_NEXT_UPDATE_DAY,      EEPROM_MAXLEN_NEXT_UPDATE_DAY);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored next update day: %s\n", nextUpdateDay.c_str());
+    }
+
+    eeprom.restoreString( nextUpdateWeekDay, EEPROM_POS_NEXT_UPDATE_WEEKDAY,  EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored next update weekday: %s\n", nextUpdateWeekDay.c_str());
+    }
+
+    eeprom.restoreString( nextUpdateHour,    EEPROM_POS_NEXT_UPDATE_HOUR,     EEPROM_MAXLEN_NEXT_UPDATE_HOUR);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored next update hour: %s\n", nextUpdateHour.c_str());
+    }
+
+    eeprom.restoreString( nextUpdateMinute,  EEPROM_POS_NEXT_UPDATE_MINUTE,   EEPROM_MAXLEN_NEXT_UPDATE_MINUTE);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored next update minute: %s\n", nextUpdateMinute.c_str());
+    }
+
+    eeprom.restoreString( updateInterval,    EEPROM_POS_UPDATE_INTERVAL,      EEPROM_MAXLEN_UPDATE_INTERVAL);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored update interval: %s\n", updateInterval.c_str());
+    }
+
+    eeprom.restoreString( updateMode,        EEPROM_POS_UPDATE_MODE,          EEPROM_MAXLEN_UPDATE_MODE);
+    if( !beQuiet )
+    {
+            Logger.Log(LOGLEVEL_DEBUG, "restored update mode: %s\n", updateMode.c_str());
+    }
 
 
+    return( retVal );
+}
 
+//
+// ------------------------------------------------------------------------
+//
+// ---------- reset uopdate information to default values
+//
+// ------------------------------------------------------------------------
+//
+void resetUpdateInfo2Default()
+{
+    updateUrl         = DEFAULT_UPDATE_URL;
+    lastRelease       = DEFAULT_UPDATE_LAST_RELEASE;
+    lastVersion       = DEFAULT_UPDATE_LAST_VERSION;
+    lastPatchlevel    = DEFAULT_UPDATE_LAST_PATCHLEVEL;
+    lastNumber        = DEFAULT_UPDATE_LAST_NUMBER;
+    nextUpdateMonth   = DEFAULT_UPDATE_NEXT_MONTH;
+    nextUpdateDay     = DEFAULT_UPDATE_NEXT_DAY;
+    nextUpdateWeekDay = DEFAULT_UPDATE_NEXT_WEEKDAY;
+    nextUpdateHour    = DEFAULT_UPDATE_NEXT_HOUR;
+    nextUpdateMinute  = DEFAULT_UPDATE_NEXT_MINUTE;
+    updateInterval    = DEFAULT_UPDATE_INTERVAL;
+    updateMode        = DEFAULT_UPDATE_MODE;
+}
 
 //
 // ************************************************************************
@@ -1448,7 +1713,6 @@ void startupActions( void )
         }
       }
     }
-
   }
 }
 
@@ -1460,6 +1724,7 @@ void startupActions( void )
 //
 // ************************************************************************
 //
+#define FIRMWARE_CHECK   "0.0.1"
 void setup()
 {
 
@@ -1491,6 +1756,7 @@ Logger.Log(LOGLEVEL_DEBUG,"EEPROM_ACTION_TBL_ENTRY_START = %d\n", EEPROM_ACTION_
 Logger.Log(LOGLEVEL_DEBUG,"EEPROM_ACTION_TBL_ENTRY_LENGTH = %d\n", EEPROM_ACTION_TBL_ENTRY_LENGTH );
 Logger.Log(LOGLEVEL_DEBUG,"EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
 
+Logger.Log(LOGLEVEL_DEBUG,"Current firmware is = %s\n", FIRMWARE_CHECK );
 
 #ifdef ESP_HAS_PCF8574
   Wire.begin(default_sda_pin,default_scl_pin);
@@ -1536,6 +1802,7 @@ Logger.Log(LOGLEVEL_DEBUG,"EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
         restoreAdminSettings();
         restoreAddSysvars();
         restoreActionTable();
+        restoreUpdateInfo();
       }
       else
       {
@@ -1547,9 +1814,11 @@ Logger.Log(LOGLEVEL_DEBUG,"EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
         eeprom.wipe();  
         Logger.Log(LOGLEVEL_DEBUG,"EEPROM cleared ... ");  
         resetAdminSettings2Default();
+        resetUpdateInfo2Default();
         storeAdminSettings();
         storeAddSysvars();
         storeActionTable();
+        storeUpdateInfo();
         eeprom.setMagic( eeprom.version2Magic() );
         Logger.Log(LOGLEVEL_DEBUG,"magic newly calculated ... \n");
 
@@ -1578,9 +1847,11 @@ Logger.Log(LOGLEVEL_DEBUG,"EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
       eeprom.wipe();  
       Logger.Log(LOGLEVEL_DEBUG,"EEPROM cleared ... ");  
       resetAdminSettings2Default();
+      resetUpdateInfo2Default();
       storeAdminSettings();
       storeAddSysvars();
       storeActionTable();
+      storeUpdateInfo();
       eeprom.setMagic( eeprom.version2Magic() );
       Logger.Log(LOGLEVEL_DEBUG,"magic newly calculated ... \n"); 
       crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
@@ -1609,9 +1880,11 @@ Logger.Log(LOGLEVEL_DEBUG,"EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
     eeprom.wipe();    
     Logger.Log(LOGLEVEL_DEBUG,"EEPROM cleared ... ");  
     resetAdminSettings2Default();
+    resetUpdateInfo2Default();
     storeAdminSettings();
     storeAddSysvars();
     storeActionTable();      
+    storeUpdateInfo();
     eeprom.setMagic( eeprom.version2Magic() );
     Logger.Log(LOGLEVEL_DEBUG,"magic newly calculated ... \n");       
     crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
@@ -1636,7 +1909,7 @@ Logger.Log(LOGLEVEL_DEBUG,"EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
     Logger.Log(LOGLEVEL_DEBUG, "Connecting to >%s< using password >%s<\n", wlanSSID.c_str(), wlanPassphrase.c_str());
   }
 
-
+  WiFi.mode(WIFI_STA);
   WiFi.begin(wlanSSID.c_str(), wlanPassphrase.c_str());
 
   while (WiFi.status() != WL_CONNECTED) {
@@ -1685,6 +1958,7 @@ Logger.Log(LOGLEVEL_DEBUG,"EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
 
   server = ESP8266WebServer( (unsigned long) wwwServerPort.toInt() );
   server.on("/", setupPage);
+  server.on("/api", apiPage);
 
   server.begin();
 
@@ -2067,59 +2341,122 @@ int check4Action( void )
 //
 // ************************************************************************
 //
+// ---------- int handleUpdate()
+//
+// ************************************************************************
+//
+int handleUpdate( void )
+{
+//    int retVal = E_SUCCESS;
+    t_httpUpdate_return retVal;
+    int lastIntNumber;
+    String newFirmwareFile;
+
+// DEFAULT_UPDATE_URL              "http://192.168.1.122/ESP8266/firmware.bin/"
+// updateUrl = DEFAULT_UPDATE_URL;
+
+    newFirmwareFile = updateUrl + lastNumber;
+
+    if( !beQuiet )
+    {
+        Logger.Log(LOGLEVEL_DEBUG, "Handle update, next firmware is: %s\n", newFirmwareFile.c_str());
+    }
+
+    switch( (retVal = ESPhttpUpdate.update(newFirmwareFile.c_str())) )
+    {
+        case HTTP_UPDATE_FAILED:
+            if( !beQuiet )
+            {
+                Logger.Log(LOGLEVEL_DEBUG, "HTTP_UPDATE_FAILED! Error (%d): %s\n", 
+                           ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+            }
+            break;
+        case HTTP_UPDATE_NO_UPDATES:
+            if( !beQuiet )
+            {
+                Logger.Log(LOGLEVEL_DEBUG, "HTTP_UPDATE_NO_UPDATES\n");
+            }
+            lastIntNumber = lastNumber.toInt();
+            lastNumber = String( lastIntNumber );
+            storeUpdateInfo();
+            break;
+        case HTTP_UPDATE_OK:
+            if( !beQuiet )
+            {
+                Logger.Log(LOGLEVEL_DEBUG, "HTTP_UPDATE_OK\n");
+            }
+            lastIntNumber = lastNumber.toInt();
+            lastNumber = String( lastIntNumber );
+            storeUpdateInfo();
+            break;
+        default:
+            if( !beQuiet )
+            {
+                Logger.Log(LOGLEVEL_DEBUG, "Unknown retval %d\n", (int) retVal);
+            }
+            break;
+    }
+
+    return((int) retVal);
+}
+
+//
+// ************************************************************************
+//
 // ---------- void loop()
 //
 // ************************************************************************
 //
 void loop()
 {
+  static short lastUpdateCheck;
   time_t secsSinceEpoch;
   short nowMinutes;
   static short minutesLastCheck;
-  short chkMinutesFrom, chkMinutesTo;
   time_t utc;
 
   utc=now();
   secsSinceEpoch = CE.toLocal(utc, &tcr);
   nowMinutes = ( hour(secsSinceEpoch) * 60 ) + minute(secsSinceEpoch);
 
-  server.handleClient();
-
-  if( nowMinutes > minutesLastCheck )
+  // the weekday now (Sunday is day 1) 
+  if( weekday(secsSinceEpoch) != lastUpdateCheck )
   {
-    if( !beQuiet )
+//    if( !beQuiet )
+//    {
+//      Logger.Log(LOGLEVEL_DEBUG, "loop: day has changed from %d to %d\n", 
+//                 lastUpdateCheck, weekday(secsSinceEpoch));
+//    }
+
+//    if( handleUpdate() == HTTP_UPDATE_OK )
+//    {
+//        HTTP_UPDATE_FAILED
+//        HTTP_UPDATE_NO_UPDATES
+
+//      lastUpdateCheck = weekday(secsSinceEpoch);
+//    }
+  }
+
+    server.handleClient();
+
+    if( nowMinutes > minutesLastCheck )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "loop: hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
+        if( !beQuiet )
+        {
+            Logger.Log(LOGLEVEL_DEBUG, "loop: hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
+        }
+
+        minutesLastCheck = nowMinutes;
+        check4Action();
+        delay(2);
+
+        handleUpdate(); // <- RAUS!!
+    }
+    else
+    {
+        delay(5);
     }
 
-    minutesLastCheck = nowMinutes;
-    check4Action();
-  }
-  else
-  {
-    delay(500);
-  }
-
-//    for (int i=0; i<8; i++)
-//    {
-//      switchRelais(i, 1);
-//      delay(100);
-//      switchRelais(i, 0);
-//      delay(100);
-//    }
-
-//    for (int i=0; i<8; i++)
-//    {
-//      switchRelais.toggle(i);
-//      delay(100);
-//      switchRelais.toggle(i);
-//      delay(100);
-//    }
-//  }
-//  else
-//  {
-//    delay(1000);
-//  }
 
 }
 
@@ -2329,8 +2666,10 @@ void setupPage()
 
     int i;
     unsigned long crcCalc, crcRead;
+    IPAddress localIP;
 
     pageContent = "";
+    localIP = WiFi.localIP();
 
     if( !beQuiet )
     {
@@ -2418,7 +2757,10 @@ tblEntry[i].extEnable_2 = server.arg( _form_keywords_[i][ KW_IDX_ENABLED_2] ).eq
 
   pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\">\n";
   pageContent += "<div align=\"center\"><strong><h1>Gartenleuchten</h1></strong></div>\n";
-  pageContent += "<div align=\"center\"><strong><h1>192.168.1.112</h1></strong></div>\n";
+
+
+  pageContent += "<div align=\"center\"><strong><h1>" + String(localIP.toString()) + "</h1></strong></div>\n";
+
   pageContent += "<form action=\"/\" method=\"get\">\n";
   pageContent += "<hr align=\"center\"><br>\n";
   pageContent += "<table border align=\"center\">\n";
@@ -2481,6 +2823,66 @@ tblEntry[i].extEnable_2 = server.arg( _form_keywords_[i][ KW_IDX_ENABLED_2] ).eq
 
 }
 
-/* ************** ++++++++++ ************* +++++++++++++++ */
+//
+// ************************************************************************
+//
+// ---------- void apiPage()
+//
+// ************************************************************************
+//
 
+void apiPage()
+{
+
+    int i;
+    pageContent = "";
+
+
+    pageContent += "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">\n";
+    pageContent += "<html>\n";
+    pageContent += "<head>\n";
+    pageContent += "<meta charset=\"utf-8\">\n";
+    pageContent += "<title>Web-API</title>\n";
+    pageContent += "</head>\n";
+    pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\">\n";
+
+    if( !beQuiet )
+    {
+         Logger.Log(LOGLEVEL_DEBUG, "apiPage\n");
+    }
+
+    for(i = 0; i < server.args(); i++ )
+    {
+        pageContent += server.argName(i) + String("=") + server.arg(i);
+        if( !beQuiet )
+        {
+            Logger.Log(LOGLEVEL_DEBUG, "%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
+        }
+    }
+
+    if( server.method() == SERVER_METHOD_POST )
+//        server.hasArg(INDEX_BUTTONNAME_ADMIN)  )
+    {
+        pageContent += String("POST REQUEST\n");
+        if( !beQuiet )
+        {
+             Logger.Log(LOGLEVEL_DEBUG, "POST REQUEST\n");
+        }
+    }
+    else
+    {
+        pageContent += String("GET REQUEST\n");
+        if( !beQuiet )
+        {
+             Logger.Log(LOGLEVEL_DEBUG, "GET REQUEST\n");
+        }
+    }
+
+    pageContent +="</body>\n";
+    pageContent +="</html>\n";
+
+    server.send(200, "text/html", pageContent); 
+}
+
+/* ************** ++++++++++ ************* +++++++++++++++ */
 
