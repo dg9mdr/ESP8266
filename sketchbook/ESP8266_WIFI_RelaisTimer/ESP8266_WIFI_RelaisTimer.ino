@@ -30,11 +30,11 @@
 //   Last step in starting up is to create a http-server listening to a
 //   specified port for requests.
 //   The web server handles a configuration page for up to eight channels.
-//   Each channel may be switched on and off on up to two user defined 
+//   Each channel may be switched on and off on up to two user defined
 //   times.
 //   In addition for each channel there are two flags to allow switching
 //   on or off using the http-API.
-//   There are three modes for each channel. ON and OFF override the 
+//   There are three modes for each channel. ON and OFF override the
 //   user defined times if their check-boxes are active.
 //   AUTO activates the user-defined times for each channel and time
 //   that is activated ( checked ).
@@ -43,10 +43,10 @@
 //
 // ************************************************************************
 //
-//   Current hardware is a witty esp developer board: 
+//   Current hardware is a witty esp developer board:
 //   https://blog.the-jedi.co.uk/2016/01/02/wifi-witty-esp12f-board/
-//   
-//   Select "NodeMCU 1.0 (ESP-12E Module)" as board in the Arduino IDE 
+//
+//   Select "NodeMCU 1.0 (ESP-12E Module)" as board in the Arduino IDE
 //
 //   fyi: witty pins for integrated RGB LED
 //     const int RED = 15;
@@ -58,13 +58,13 @@
 //
 //-------- History --------------------------------------------------------
 //
-// 2016/10/28: initial version 
+// 2016/10/28: initial version
 // 2016/12/08: added flag handling
 // 2016/12/12: added functions for web-update
-// 
+//
 //
 // ************************************************************************
-//  
+//
 // ---- suppress debug output to serial line ------------------------------
 // set beQuiet = no debug output
 //
@@ -83,14 +83,14 @@ bool beQuiet;
 #include <TimeLib.h>            // time keeping feature
 #include <WiFiUdp.h>            // udp for network time
 #include <Timezone.h>           // for adjust date/time to local timezone
-                                // https://github.com/JChristensen/Timezone
+// https://github.com/JChristensen/Timezone
 #include "PCF8574.h"
 #include <Wire.h>
 
 #include <ESP8266HTTPClient.h>
 #include <ESP8266httpUpdate.h>
 
-// #define __ASSERT_USE_STDERR     // 
+// #define __ASSERT_USE_STDERR     //
 // #include <assert.h>             // for future use
 
 #include "dsEeprom.h"           // simplified access to onchip EEPROM
@@ -100,13 +100,13 @@ bool beQuiet;
 // ************************************************************************
 // defines for default settings
 // ************************************************************************
-// 
+//
 // set DEFAULT_WLAN_SSID and DEFAULT_WLAN_PASSPHRASE to match
 // your network
 //
 #define DEFAULT_UDP_LISTENPORT		8888
-#define DEFAULT_WLAN_SSID               "HERE_YOUR_SSID"
-#define DEFAULT_WLAN_PASSPHRASE         "HERE_YOUR_WLAN_PASSPHRASE"
+#define DEFAULT_WLAN_SSID               ""
+#define DEFAULT_WLAN_PASSPHRASE         ""
 
 #define DEAULT_NTP_SERVERNAME		"us.pool.ntp.org"
 
@@ -130,7 +130,7 @@ bool beQuiet;
 // ************************************************************************
 // Logging
 // ************************************************************************
-// 
+//
 static SimpleLog Logger;
 //
 // ************************************************************************
@@ -337,6 +337,7 @@ dsEeprom eeprom;
 #define ACTION_FLAG_ALWAYS_ON     64
 #define ACTION_FLAG_ALWAYS_OFF   128
 
+#define NUM_SETUP_FORM_FIELDS     14
 
 struct _action_entry {
   String   name;
@@ -359,149 +360,39 @@ struct _action_entry {
 
 struct _action_entry tblEntry[MAX_ACTION_TABLE_LINES];
 
-String formFieldName[MAX_ACTION_TABLE_LINES];
-
-#ifdef NOT_COMPACT
-char* _form_keywords_[MAX_ACTION_TABLE_LINES][14] = {
-
-  { (char*) "bezeichner1", 
-    (char*) "enabled1_1", 
-    (char*) "hfrom1_1", 
-    (char*) "mfrom1_1", 
-    (char*) "hto1_1", 
-    (char*) "mto1_1", 
-    (char*) "enabled2_1", 
-    (char*) "hfrom2_1", 
-    (char*) "mfrom2_1", 
-    (char*) "hto2_1", 
-    (char*) "mto2_1", 
-    (char*) "ext1_1", 
-    (char*) "ext2_1", 
-    (char*) "mode1" },
-
-  { (char*) "bezeichner2", 
-    (char*) "enabled1_2", 
-    (char*) "hfrom1_2", 
-    (char*) "mfrom1_2", 
-    (char*) "hto1_2", 
-    (char*) "mto1_2", 
-    (char*) "enabled2_2", 
-    (char*) "hfrom2_2", 
-    (char*) "mfrom2_2", 
-    (char*) "hto2_2", 
-    (char*) "mto2_2", 
-    (char*) "ext1_2", 
-    (char*) "ext2_2", 
-    (char*) "mode2" },
-
-  { (char*) "bezeichner3", 
-    (char*) "enabled1_3", 
-    (char*) "hfrom1_3", 
-    (char*) "mfrom1_3", 
-    (char*) "hto1_3", 
-    (char*) "mto1_3", 
-    (char*) "enabled2_3", 
-    (char*) "hfrom2_3", 
-    (char*) "mfrom2_3", 
-    (char*) "hto2_3", 
-    (char*) "mto2_3", 
-    (char*) "ext1_3", 
-    (char*) "ext2_3", 
-    (char*) "mode3" },
-
-  { (char*) "bezeichner4", 
-    (char*) "enabled1_4", 
-    (char*) "hfrom1_4", 
-    (char*) "mfrom1_4", 
-    (char*) "hto1_4", 
-    (char*) "mto1_4", 
-    (char*) "enabled2_4", 
-    (char*) "hfrom2_4", 
-    (char*) "mfrom2_4", 
-    (char*) "hto2_4", 
-    (char*) "mto2_4", 
-    (char*) "ext1_4", 
-    (char*) "ext2_4", 
-    (char*) "mode4" },
-
-  { (char*) "bezeichner5", 
-    (char*) "enabled1_5", 
-    (char*) "hfrom1_5", 
-    (char*) "mfrom1_5", 
-    (char*) "hto1_5", 
-    (char*) "mto1_5", 
-    (char*) "enabled2_5", 
-    (char*) "hfrom2_5", 
-    (char*) "mfrom2_5", 
-    (char*) "hto2_5", 
-    (char*) "mto2_5", 
-    (char*) "ext1_5", 
-    (char*) "ext2_5", 
-    (char*) "mode5" },
-
-  { (char*) "bezeichner6", 
-    (char*) "enabled1_6", 
-    (char*) "hfrom1_6", 
-    (char*) "mfrom1_6", 
-    (char*) "hto1_6", 
-    (char*) "mto1_6", 
-    (char*) "enabled2_6", 
-    (char*) "hfrom2_6", 
-    (char*) "mfrom2_6", 
-    (char*) "hto2_6", 
-    (char*) "mto2_6", 
-    (char*) "ext1_6", 
-    (char*) "ext2_6", 
-    (char*) "mode6" },
-
-  { (char*) "bezeichner7", 
-    (char*) "enabled1_7", 
-    (char*) "hfrom1_7", 
-    (char*) "mfrom1_7", 
-    (char*) "hto1_7", 
-    (char*) "mto1_7", 
-    (char*) "enabled2_7", 
-    (char*) "hfrom2_7", 
-    (char*) "mfrom2_7", 
-    (char*) "hto2_7", 
-    (char*) "mto2_7", 
-    (char*) "ext1_7", 
-    (char*) "ext2_7", 
-    (char*) "mode7" },
-
-  { (char*) "bezeichner8", 
-    (char*) "enabled1_8", 
-    (char*) "hfrom1_8", 
-    (char*) "mfrom1_8", 
-    (char*) "hto1_8", 
-    (char*) "mto1_8", 
-    (char*) "enabled2_8", 
-    (char*) "hfrom2_8", 
-    (char*) "mfrom2_8", 
-    (char*) "hto2_8", 
-    (char*) "mto2_8", 
-    (char*) "ext1_8", 
-    (char*) "ext2_8", 
-    (char*) "mode8" }
-
-};
-#endif // NOT_COMPACT
+String formFieldName[NUM_SETUP_FORM_FIELDS];
 
 
 #define KW_IDX_BEZEICHNER   0
-#define KW_IDX_ENABLED_1    1
-#define KW_IDX_HFROM_1      2
-#define KW_IDX_MFROM_1      3
-#define KW_IDX_HTO_1        4
-#define KW_IDX_MTO_1        5
-#define KW_IDX_ENABLED_2    6
-#define KW_IDX_HFROM_2      7
-#define KW_IDX_MFROM_2      8
-#define KW_IDX_HTO_2        9
-#define KW_IDX_MTO_2       10
-#define KW_IDX_EXT_1       11
-#define KW_IDX_EXT_2       12
-#define KW_IDX_MODE        13
+#define KW_IDX_MODE         1
+#define KW_IDX_ENABLED_1    2
+#define KW_IDX_HFROM_1      3
+#define KW_IDX_MFROM_1      4
+#define KW_IDX_HTO_1        5
+#define KW_IDX_MTO_1        6
+#define KW_IDX_EXT_1        7
+#define KW_IDX_ENABLED_2    8
+#define KW_IDX_HFROM_2      9
+#define KW_IDX_MFROM_2     10
+#define KW_IDX_HTO_2       11
+#define KW_IDX_MTO_2       12
+#define KW_IDX_EXT_2       13
+
+#define DEFAULT_FORMVAR_BEZEICHNER  ""
+#define DEFAULT_FORMVAR_MODE        ""
+#define DEFAULT_FORMVAR_ENABLED_1   false
+#define DEFAULT_FORMVAR_HFROM_1     ""
+#define DEFAULT_FORMVAR_MFROM_1     ""
+#define DEFAULT_FORMVAR_HTO_1       ""
+#define DEFAULT_FORMVAR_MTO_1       ""
+#define DEFAULT_FORMVAR_EXT_1       false
+#define DEFAULT_FORMVAR_ENABLED_2   false
+#define DEFAULT_FORMVAR_HFROM_2     ""
+#define DEFAULT_FORMVAR_MFROM_2     ""
+#define DEFAULT_FORMVAR_HTO_2       ""
+#define DEFAULT_FORMVAR_MTO_2       ""
+#define DEFAULT_FORMVAR_EXT_2       false
+    
 
 
 #ifdef ESP_HAS_PCF8574
@@ -518,7 +409,7 @@ unsigned int localUDPPort =	DEFAULT_UDP_LISTENPORT;
 //
 //
 // ************************************************************************
-// define clock an data pin for iic 
+// define clock an data pin for iic
 // ************************************************************************
 //
 static int default_sda_pin = 2;
@@ -547,9 +438,9 @@ PCF8574 PCF_38(0x38);  // add switches to lines  (used as input)
 //
 // ------------------------------------------------------------------------
 //
-// void __assert(const char *__func, const char *__file, int __lineno, const char *__sexp) 
+// void __assert(const char *__func, const char *__file, int __lineno, const char *__sexp)
 // {
-//    // transmit diagnostic informations through serial link. 
+//    // transmit diagnostic informations through serial link.
 //    Serial.println(__func);
 //    Serial.println(__file);
 //    Serial.println(__lineno, DEC);
@@ -567,13 +458,13 @@ PCF8574 PCF_38(0x38);  // add switches to lines  (used as input)
 //
 String macToID(const uint8_t* mac)
 {
-    String result;
-    for (int i = 0; i < 6; ++i) 
-    {
-        result += String(mac[i], 16);
-    }
-    result.toUpperCase();
-    return result;
+  String result;
+  for (int i = 0; i < 6; ++i)
+  {
+    result += String(mac[i], 16);
+  }
+  result.toUpperCase();
+  return result;
 }
 //
 // ------------------------------------------------------------------------
@@ -584,12 +475,12 @@ String macToID(const uint8_t* mac)
 //
 void generateNodename()
 {
-    String id;
-    uint8_t mac[6];
+  String id;
+  uint8_t mac[6];
 
-    WiFi.macAddress(mac);
-    id=macToID(mac);
-    nodeName = "ESP_" + id;
+  WiFi.macAddress(mac);
+  id = macToID(mac);
+  nodeName = "ESP_" + id;
 }
 //
 // ------------------------------------------------------------------------
@@ -600,33 +491,33 @@ void generateNodename()
 //
 void dumpInfo()
 {
-  
+
 #ifdef DO_LOG
 
-    if( !beQuiet )
-    {  
-        Serial.print("WiFi.macAddress .....:");
-        Serial.println(WiFi.macAddress());
-        Serial.print("WiFi.localIP ........:");
-        Serial.println(WiFi.localIP());
-        WiFi.printDiag(Serial);
+  if ( !beQuiet )
+  {
+    Serial.print("WiFi.macAddress .....:");
+    Serial.println(WiFi.macAddress());
+    Serial.print("WiFi.localIP ........:");
+    Serial.println(WiFi.localIP());
+    WiFi.printDiag(Serial);
 
-        Serial.print("ESP.getFreeHeap .....:");
-        Serial.println(ESP.getFreeHeap());
-        Serial.print("ESP.getChipId .......:");
-        Serial.println(ESP.getChipId());
-        Serial.print("ESP.getFlashChipId ..: ");
-        Serial.println(ESP.getFlashChipId());
-        Serial.print("ESP.getFlashChipSize : ");
-        Serial.println(ESP.getFlashChipSize());
-        Serial.print("ESP.getFlashChipSpeed: ");
-        Serial.println(ESP.getFlashChipSpeed());
-        Serial.print("ESP.getCycleCount ...: ");
-        Serial.println(ESP.getCycleCount());
-        Serial.print("ESP.getVcc ..........: ");
-        Serial.println(ESP.getVcc());
-    }
-    
+    Serial.print("ESP.getFreeHeap .....:");
+    Serial.println(ESP.getFreeHeap());
+    Serial.print("ESP.getChipId .......:");
+    Serial.println(ESP.getChipId());
+    Serial.print("ESP.getFlashChipId ..: ");
+    Serial.println(ESP.getFlashChipId());
+    Serial.print("ESP.getFlashChipSize : ");
+    Serial.println(ESP.getFlashChipSize());
+    Serial.print("ESP.getFlashChipSpeed: ");
+    Serial.println(ESP.getFlashChipSpeed());
+    Serial.print("ESP.getCycleCount ...: ");
+    Serial.println(ESP.getCycleCount());
+    Serial.print("ESP.getVcc ..........: ");
+    Serial.println(ESP.getVcc());
+  }
+
 #endif // DO_LOG
 
 }
@@ -644,7 +535,7 @@ void espRestart()
 //
 // ************************************************************************
 //
-// ---------- NTP specific code 
+// ---------- NTP specific code
 //
 // ************************************************************************
 //
@@ -737,7 +628,7 @@ void sendNTPpacket(IPAddress &address, byte packetBuffer[])
 //
 // ************************************************************************
 //
-// ---------- page preparation and handling 
+// ---------- page preparation and handling
 //
 // ************************************************************************
 //
@@ -749,7 +640,7 @@ void apiPage();
 void setupPage();
 void doCreateLine( int tmRow );
 void doTimeSelect( int tmNum, int tmRow, char* sRow );
-void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, char* sRow, char *sHour, char* sMinute );
+void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, char* sRow, const char *sHour, const char* sMinute );
 // ------------------------------------------------------------------------
 //
 
@@ -799,14 +690,14 @@ int serverStatusCode;
 //
 void resetAdminSettings2Default( void )
 {
-    ntpServerName  = DEAULT_NTP_SERVERNAME;
-    wlanSSID       = DEFAULT_WLAN_SSID;
-    wlanPassphrase = DEFAULT_WLAN_PASSPHRASE;
-    useDhcp        = DEFAULT_USE_DHCP;
-    wwwServerIP    = DEFAULT_HTTP_SERVER_IP;
-    wwwServerPort  = DEFAULT_HTTP_SERVER_PORT;
-    nodeName       = DEFAULT_NODENAME;
-    adminPasswd    = DEFAULT_ADMIN_PASSWORD;
+  ntpServerName  = DEAULT_NTP_SERVERNAME;
+  wlanSSID       = DEFAULT_WLAN_SSID;
+  wlanPassphrase = DEFAULT_WLAN_PASSPHRASE;
+  useDhcp        = DEFAULT_USE_DHCP;
+  wwwServerIP    = DEFAULT_HTTP_SERVER_IP;
+  wwwServerPort  = DEFAULT_HTTP_SERVER_PORT;
+  nodeName       = DEFAULT_NODENAME;
+  adminPasswd    = DEFAULT_ADMIN_PASSWORD;
 }
 
 //
@@ -818,22 +709,22 @@ void resetAdminSettings2Default( void )
 //
 void resetActionFlags( void )
 {
-    int currLine;
+  int currLine;
 
-//    for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
-    for( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
-    {
+  //    for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
+  for ( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
+  {
 #ifdef DO_LOG
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, (const char*) "reset action flag for port %d\n", currLine );
-        }
+    if ( !beQuiet )
+    {
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "reset action flag for port %d\n", currLine );
+    }
 #endif // DO_LOG
 
-        tblEntry[currLine].actionFlag_1 = ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION;
-        tblEntry[currLine].actionFlag_2 = ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION;
-    }
-	
+    tblEntry[currLine].actionFlag_1 = ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION;
+    tblEntry[currLine].actionFlag_2 = ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION;
+  }
+
 }
 
 
@@ -846,23 +737,23 @@ void resetActionFlags( void )
 //
 int storeAdminSettings()
 {
-    int retVal = 0;
+  int retVal = 0;
 
-    eeprom.storeString(  wlanSSID,      EEPROM_MAXLEN_WLAN_SSID,       EEPROM_POS_WLAN_SSID );
-    
-    eeprom.storeString(  wlanPassphrase,    EEPROM_MAXLEN_WLAN_PASSPHRASE, EEPROM_POS_WLAN_PASSPHRASE );
-    
-    eeprom.storeString(  wwwServerIP,   EEPROM_MAXLEN_SERVER_IP,       EEPROM_POS_SERVER_IP );
-    
-    eeprom.storeString(  wwwServerPort, EEPROM_MAXLEN_SERVER_PORT,     EEPROM_POS_SERVER_PORT );
-    
-    eeprom.storeString(  nodeName,      EEPROM_MAXLEN_NODENAME,        EEPROM_POS_NODENAME );
-    
-    eeprom.storeString(  adminPasswd,   EEPROM_MAXLEN_ADMIN_PASSWORD,  EEPROM_POS_ADMIN_PASSWORD );
+  eeprom.storeString(  wlanSSID,      EEPROM_MAXLEN_WLAN_SSID,       EEPROM_POS_WLAN_SSID );
 
-    eeprom.validate();
+  eeprom.storeString(  wlanPassphrase,    EEPROM_MAXLEN_WLAN_PASSPHRASE, EEPROM_POS_WLAN_PASSPHRASE );
 
-    return( retVal );
+  eeprom.storeString(  wwwServerIP,   EEPROM_MAXLEN_SERVER_IP,       EEPROM_POS_SERVER_IP );
+
+  eeprom.storeString(  wwwServerPort, EEPROM_MAXLEN_SERVER_PORT,     EEPROM_POS_SERVER_PORT );
+
+  eeprom.storeString(  nodeName,      EEPROM_MAXLEN_NODENAME,        EEPROM_POS_NODENAME );
+
+  eeprom.storeString(  adminPasswd,   EEPROM_MAXLEN_ADMIN_PASSWORD,  EEPROM_POS_ADMIN_PASSWORD );
+
+  eeprom.validate();
+
+  return ( retVal );
 
 }
 
@@ -875,38 +766,38 @@ int storeAdminSettings()
 //
 int restoreAdminSettings()
 {
-    int retVal = 0;
-    unsigned long crcCalc;
-    unsigned long crcRead;
+  int retVal = 0;
+  unsigned long crcCalc;
+  unsigned long crcRead;
 
-    if( eeprom.isValid() )
+  if ( eeprom.isValid() )
+  {
+    crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
+
+    eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
+
+
+    if ( (crcCalc == crcRead) )
     {
-        crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
-
-        eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
-        
-
-        if( (crcCalc == crcRead) )
-        {
-            eeprom.restoreString(  wlanSSID,    EEPROM_POS_WLAN_SSID,       EEPROM_MAXLEN_WLAN_SSID );
-            eeprom.restoreString(  wlanPassphrase,  EEPROM_POS_WLAN_PASSPHRASE, EEPROM_MAXLEN_WLAN_PASSPHRASE );
-            eeprom.restoreString(  wwwServerIP, EEPROM_POS_SERVER_IP,       EEPROM_MAXLEN_SERVER_IP );
-            eeprom.restoreString(  wwwServerPort, EEPROM_POS_SERVER_PORT,     EEPROM_MAXLEN_SERVER_PORT );
-            eeprom.restoreString(  nodeName,    EEPROM_POS_NODENAME,        EEPROM_MAXLEN_NODENAME );
-            eeprom.restoreString(  adminPasswd, EEPROM_POS_ADMIN_PASSWORD,  EEPROM_MAXLEN_ADMIN_PASSWORD );
-            retVal = E_SUCCESS;
-        }
-        else
-        {
-            retVal = E_BAD_CRC;
-        }
+      eeprom.restoreString(  wlanSSID,    EEPROM_POS_WLAN_SSID,       EEPROM_MAXLEN_WLAN_SSID );
+      eeprom.restoreString(  wlanPassphrase,  EEPROM_POS_WLAN_PASSPHRASE, EEPROM_MAXLEN_WLAN_PASSPHRASE );
+      eeprom.restoreString(  wwwServerIP, EEPROM_POS_SERVER_IP,       EEPROM_MAXLEN_SERVER_IP );
+      eeprom.restoreString(  wwwServerPort, EEPROM_POS_SERVER_PORT,     EEPROM_MAXLEN_SERVER_PORT );
+      eeprom.restoreString(  nodeName,    EEPROM_POS_NODENAME,        EEPROM_MAXLEN_NODENAME );
+      eeprom.restoreString(  adminPasswd, EEPROM_POS_ADMIN_PASSWORD,  EEPROM_MAXLEN_ADMIN_PASSWORD );
+      retVal = E_SUCCESS;
     }
     else
     {
-        retVal = E_INVALID_MAGIC;
+      retVal = E_BAD_CRC;
     }
+  }
+  else
+  {
+    retVal = E_INVALID_MAGIC;
+  }
 
-    return( retVal );
+  return ( retVal );
 
 }
 
@@ -919,15 +810,15 @@ int restoreAdminSettings()
 //
 int storeAddSysvars()
 {
-    int retVal = 0;
+  int retVal = 0;
 
-    eeprom.storeString(  ntpServerName,      EEPROM_MAXLEN_NTP_SERVER_NAME,       EEPROM_POS_NTP_SERVER_NAME );
-    eeprom.storeString(  ntpServerPort,      EEPROM_MAXLEN_NTP_SERVER_PORT,       EEPROM_POS_NTP_SERVER_PORT );
- 
+  eeprom.storeString(  ntpServerName,      EEPROM_MAXLEN_NTP_SERVER_NAME,       EEPROM_POS_NTP_SERVER_NAME );
+  eeprom.storeString(  ntpServerPort,      EEPROM_MAXLEN_NTP_SERVER_PORT,       EEPROM_POS_NTP_SERVER_PORT );
 
-    return( retVal );
+
+  return ( retVal );
 }
-   
+
 //
 // ------------------------------------------------------------------------
 //
@@ -937,15 +828,22 @@ int storeAddSysvars()
 //
 int restoreAddSysvars()
 {
-    int retVal = 0;
+  int retVal = 0;
 
-    eeprom.restoreString(  ntpServerName,    EEPROM_POS_NTP_SERVER_NAME,       EEPROM_MAXLEN_NTP_SERVER_NAME );
-    eeprom.restoreString(  ntpServerPort,    EEPROM_POS_NTP_SERVER_PORT,       EEPROM_MAXLEN_NTP_SERVER_PORT );
+  eeprom.restoreString(  ntpServerName,    EEPROM_POS_NTP_SERVER_NAME,       EEPROM_MAXLEN_NTP_SERVER_NAME );
+  eeprom.restoreString(  ntpServerPort,    EEPROM_POS_NTP_SERVER_PORT,       EEPROM_MAXLEN_NTP_SERVER_PORT );
 
-    eeprom.validate();
+  eeprom.validate();
 
-    return( retVal );
+  return ( retVal );
 }
+
+
+
+
+
+
+
 //
 // ------------------------------------------------------------------------
 //
@@ -955,63 +853,95 @@ int restoreAddSysvars()
 //
 int storeActionTable()
 {
-    int retVal = 0;
-    int currLine;
+  int retVal = 0;
+  int currLine;
 
 
-    // for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
-    for( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
-    {
-        eeprom.storeString(tblEntry[currLine].name, EEPROM_MAXLEN_TBL_ROW_NAME, 
-                           EEPROM_POS_TBL_ROW_NAME +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        eeprom.storeString(tblEntry[currLine].mode, EEPROM_MAXLEN_TBL_ROW_MODE, 
-                           EEPROM_POS_TBL_ROW_MODE+
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+  // for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
+  for ( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
+  {
+    eeprom.storeString(tblEntry[currLine].name, EEPROM_MAXLEN_TBL_ROW_NAME,
+                       EEPROM_POS_TBL_ROW_NAME +
+                       (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeString(tblEntry[currLine].mode, EEPROM_MAXLEN_TBL_ROW_MODE,
+                       EEPROM_POS_TBL_ROW_MODE +
+                       (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        eeprom.storeBoolean((char*)&tblEntry[currLine].enabled_1, EEPROM_POS_TBL_ENABLED1 +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        eeprom.storeString(tblEntry[currLine].hourFrom_1, EEPROM_MAXLEN_TBL_HR_FROM, 
-                           EEPROM_POS_TBL_HR1_FROM +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        eeprom.storeString(tblEntry[currLine].minuteFrom_1, EEPROM_MAXLEN_TBL_MIN_FROM, 
-                           EEPROM_POS_TBL_MIN1_FROM +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        eeprom.storeString(tblEntry[currLine].hourTo_1, EEPROM_MAXLEN_TBL_HR_TO, 
-                           EEPROM_POS_TBL_HR1_TO +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        eeprom.storeString(tblEntry[currLine].minuteTo_1, EEPROM_MAXLEN_TBL_MIN_TO, 
-                           EEPROM_POS_TBL_MIN1_TO +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        eeprom.storeBoolean((char*)&tblEntry[currLine].extEnable_1, EEPROM_POS_TBL_EXT1_ENABLED +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeBoolean((char*)&tblEntry[currLine].enabled_1, EEPROM_POS_TBL_ENABLED1 +
+                        (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeString(tblEntry[currLine].hourFrom_1, EEPROM_MAXLEN_TBL_HR_FROM,
+                       EEPROM_POS_TBL_HR1_FROM +
+                       (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeString(tblEntry[currLine].minuteFrom_1, EEPROM_MAXLEN_TBL_MIN_FROM,
+                       EEPROM_POS_TBL_MIN1_FROM +
+                       (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeString(tblEntry[currLine].hourTo_1, EEPROM_MAXLEN_TBL_HR_TO,
+                       EEPROM_POS_TBL_HR1_TO +
+                       (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeString(tblEntry[currLine].minuteTo_1, EEPROM_MAXLEN_TBL_MIN_TO,
+                       EEPROM_POS_TBL_MIN1_TO +
+                       (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeBoolean((char*)&tblEntry[currLine].extEnable_1, EEPROM_POS_TBL_EXT1_ENABLED +
+                        (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        eeprom.storeBoolean((char*)&tblEntry[currLine].enabled_2, EEPROM_POS_TBL_ENABLED2 +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeBoolean((char*)&tblEntry[currLine].enabled_2, EEPROM_POS_TBL_ENABLED2 +
+                        (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        eeprom.storeString(tblEntry[currLine].hourFrom_2, EEPROM_MAXLEN_TBL_HR_FROM, 
-                           EEPROM_POS_TBL_HR2_FROM +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeString(tblEntry[currLine].hourFrom_2, EEPROM_MAXLEN_TBL_HR_FROM,
+                       EEPROM_POS_TBL_HR2_FROM +
+                       (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        eeprom.storeString(tblEntry[currLine].minuteFrom_2, EEPROM_MAXLEN_TBL_MIN_FROM, 
-                           EEPROM_POS_TBL_MIN2_FROM +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeString(tblEntry[currLine].minuteFrom_2, EEPROM_MAXLEN_TBL_MIN_FROM,
+                       EEPROM_POS_TBL_MIN2_FROM +
+                       (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        eeprom.storeString(tblEntry[currLine].hourTo_2, EEPROM_MAXLEN_TBL_HR_TO, 
-                           EEPROM_POS_TBL_HR2_TO +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeString(tblEntry[currLine].hourTo_2, EEPROM_MAXLEN_TBL_HR_TO,
+                       EEPROM_POS_TBL_HR2_TO +
+                       (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        eeprom.storeString(tblEntry[currLine].minuteTo_2, EEPROM_MAXLEN_TBL_MIN_TO, 
-                           EEPROM_POS_TBL_MIN2_TO +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+    eeprom.storeString(tblEntry[currLine].minuteTo_2, EEPROM_MAXLEN_TBL_MIN_TO,
+                       EEPROM_POS_TBL_MIN2_TO +
+                       (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        eeprom.storeBoolean((char*)&tblEntry[currLine].extEnable_2, EEPROM_POS_TBL_EXT2_ENABLED +
-                           (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-    }
+    eeprom.storeBoolean((char*)&tblEntry[currLine].extEnable_2, EEPROM_POS_TBL_EXT2_ENABLED +
+                        (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+  }
 
-    eeprom.validate();
+  eeprom.validate();
 
-    return( retVal );
+  return ( retVal );
+
+}
+
+//
+// ------------------------------------------------------------------------
+//
+// ---------- initialize the table with empty information
+//
+// ------------------------------------------------------------------------
+//
+void resetActionTable2Default()
+{
+  int currLine;
+  
+  for ( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
+  {
+    tblEntry[currLine].name         = DEFAULT_FORMVAR_BEZEICHNER;
+    tblEntry[currLine].mode         = DEFAULT_FORMVAR_MODE;
+    tblEntry[currLine].enabled_1    = DEFAULT_FORMVAR_ENABLED_1;
+    tblEntry[currLine].hourFrom_1   = DEFAULT_FORMVAR_HFROM_1;
+    tblEntry[currLine].minuteFrom_1 = DEFAULT_FORMVAR_MFROM_1;
+    tblEntry[currLine].hourTo_1     = DEFAULT_FORMVAR_HTO_1;
+    tblEntry[currLine].minuteTo_1   = DEFAULT_FORMVAR_MTO_1;
+    
+    tblEntry[currLine].extEnable_1  = DEFAULT_FORMVAR_EXT_1;
+    tblEntry[currLine].enabled_2    = DEFAULT_FORMVAR_ENABLED_2;
+    tblEntry[currLine].hourFrom_2   = DEFAULT_FORMVAR_HFROM_2;
+    tblEntry[currLine].minuteFrom_2 = DEFAULT_FORMVAR_MFROM_2;
+    tblEntry[currLine].hourTo_2     = DEFAULT_FORMVAR_HTO_2;
+    tblEntry[currLine].minuteTo_2   = DEFAULT_FORMVAR_MTO_2;
+    tblEntry[currLine].extEnable_2  = DEFAULT_FORMVAR_EXT_2;
+  }
 
 }
 
@@ -1024,74 +954,74 @@ int storeActionTable()
 //
 int restoreActionTable()
 {
-    int retVal = 0;
-    unsigned long crcCalc;
-    unsigned long crcRead;
-    int currLine;
+  int retVal = 0;
+  unsigned long crcCalc;
+  unsigned long crcRead;
+  int currLine;
 
-    if( eeprom.isValid() )
+  if ( eeprom.isValid() )
+  {
+    crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
+
+    eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
+
+    if ( crcCalc == crcRead )
     {
-        crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
 
-        eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
-        
-        if( crcCalc == crcRead )
-        {
-
-            // for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
-            for( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
-            {
-                eeprom.restoreString(tblEntry[currLine].name, 
-                                     EEPROM_POS_TBL_ROW_NAME + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
-                                     EEPROM_MAXLEN_TBL_ROW_NAME );
-                eeprom.restoreString(tblEntry[currLine].mode,
-                                     EEPROM_POS_TBL_ROW_MODE + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
-                                     EEPROM_MAXLEN_TBL_ROW_MODE );
-                eeprom.restoreBoolean((char*)&tblEntry[currLine].enabled_1, EEPROM_POS_TBL_ENABLED1 +
-                                   (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-                eeprom.restoreString(tblEntry[currLine].hourFrom_1, 
-                                     EEPROM_POS_TBL_HR1_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
-                                     EEPROM_MAXLEN_TBL_HR_FROM );
-                eeprom.restoreString(tblEntry[currLine].minuteFrom_1, 
-                                     EEPROM_POS_TBL_MIN1_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
-                                     EEPROM_MAXLEN_TBL_MIN_FROM );
-                eeprom.restoreString(tblEntry[currLine].hourTo_1, 
-                                     EEPROM_POS_TBL_HR1_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
-                                     EEPROM_MAXLEN_TBL_HR_TO );
-                eeprom.restoreString(tblEntry[currLine].minuteTo_1, 
-                                     EEPROM_POS_TBL_MIN1_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
-                                     EEPROM_MAXLEN_TBL_MIN_TO );
-                eeprom.restoreBoolean((char*)&tblEntry[currLine].extEnable_1, EEPROM_POS_TBL_EXT1_ENABLED +
-                                   (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-                eeprom.restoreBoolean((char*)&tblEntry[currLine].enabled_2, EEPROM_POS_TBL_ENABLED2 +
-                                     (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-                eeprom.restoreString(tblEntry[currLine].hourFrom_2, 
-                                     EEPROM_POS_TBL_HR2_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
-                                     EEPROM_MAXLEN_TBL_HR_FROM );
-                eeprom.restoreString(tblEntry[currLine].minuteFrom_2, 
-                                     EEPROM_POS_TBL_MIN2_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
-                                     EEPROM_MAXLEN_TBL_MIN_FROM );
-                eeprom.restoreString(tblEntry[currLine].hourTo_2, 
-                                     EEPROM_POS_TBL_HR2_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
-                                     EEPROM_MAXLEN_TBL_HR_TO );
-                eeprom.restoreString(tblEntry[currLine].minuteTo_2, 
-                                     EEPROM_POS_TBL_MIN2_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
-                                     EEPROM_MAXLEN_TBL_MIN_TO );
-                eeprom.restoreBoolean((char*)&tblEntry[currLine].extEnable_2, EEPROM_POS_TBL_EXT2_ENABLED +
-                                   (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-            }
-        }
-        else
-        {
-            retVal = E_BAD_CRC;
-        }
+      // for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
+      for ( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
+      {
+        eeprom.restoreString(tblEntry[currLine].name,
+                             EEPROM_POS_TBL_ROW_NAME + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH),
+                             EEPROM_MAXLEN_TBL_ROW_NAME );
+        eeprom.restoreString(tblEntry[currLine].mode,
+                             EEPROM_POS_TBL_ROW_MODE + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH),
+                             EEPROM_MAXLEN_TBL_ROW_MODE );
+        eeprom.restoreBoolean((char*)&tblEntry[currLine].enabled_1, EEPROM_POS_TBL_ENABLED1 +
+                              (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+        eeprom.restoreString(tblEntry[currLine].hourFrom_1,
+                             EEPROM_POS_TBL_HR1_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH),
+                             EEPROM_MAXLEN_TBL_HR_FROM );
+        eeprom.restoreString(tblEntry[currLine].minuteFrom_1,
+                             EEPROM_POS_TBL_MIN1_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH),
+                             EEPROM_MAXLEN_TBL_MIN_FROM );
+        eeprom.restoreString(tblEntry[currLine].hourTo_1,
+                             EEPROM_POS_TBL_HR1_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH),
+                             EEPROM_MAXLEN_TBL_HR_TO );
+        eeprom.restoreString(tblEntry[currLine].minuteTo_1,
+                             EEPROM_POS_TBL_MIN1_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH),
+                             EEPROM_MAXLEN_TBL_MIN_TO );
+        eeprom.restoreBoolean((char*)&tblEntry[currLine].extEnable_1, EEPROM_POS_TBL_EXT1_ENABLED +
+                              (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+        eeprom.restoreBoolean((char*)&tblEntry[currLine].enabled_2, EEPROM_POS_TBL_ENABLED2 +
+                              (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+        eeprom.restoreString(tblEntry[currLine].hourFrom_2,
+                             EEPROM_POS_TBL_HR2_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH),
+                             EEPROM_MAXLEN_TBL_HR_FROM );
+        eeprom.restoreString(tblEntry[currLine].minuteFrom_2,
+                             EEPROM_POS_TBL_MIN2_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH),
+                             EEPROM_MAXLEN_TBL_MIN_FROM );
+        eeprom.restoreString(tblEntry[currLine].hourTo_2,
+                             EEPROM_POS_TBL_HR2_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH),
+                             EEPROM_MAXLEN_TBL_HR_TO );
+        eeprom.restoreString(tblEntry[currLine].minuteTo_2,
+                             EEPROM_POS_TBL_MIN2_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH),
+                             EEPROM_MAXLEN_TBL_MIN_TO );
+        eeprom.restoreBoolean((char*)&tblEntry[currLine].extEnable_2, EEPROM_POS_TBL_EXT2_ENABLED +
+                              (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
+      }
     }
     else
     {
-        retVal = E_INVALID_MAGIC;
+      retVal = E_BAD_CRC;
     }
+  }
+  else
+  {
+    retVal = E_INVALID_MAGIC;
+  }
 
-    return( retVal );
+  return ( retVal );
 
 }
 
@@ -1104,27 +1034,27 @@ int restoreActionTable()
 //
 int storeUpdateInfo()
 {
-    int retVal = 0;
+  int retVal = 0;
 
-    eeprom.storeString( updateUrl,               EEPROM_MAXLEN_UPDATE_URL,           EEPROM_POS_UPDATE_URL);
-    eeprom.storeRaw( (char*) &lastRelease,       EEPROM_MAXLEN_LAST_RELEASE,         EEPROM_POS_LAST_RELEASE);
-    eeprom.storeRaw( (char*) &lastVersion,       EEPROM_MAXLEN_LAST_VERSION,         EEPROM_POS_LAST_VERSION);
-    eeprom.storeRaw( (char*) &lastPatchlevel,    EEPROM_MAXLEN_LAST_PATCHLEVEL,      EEPROM_POS_LAST_PATCHLEVEL);
-    eeprom.storeRaw( (char*) &lastNumber,        EEPROM_MAXLEN_LAST_NUMBER,          EEPROM_POS_LAST_NUMBER);
-    eeprom.storeRaw( (char*) &nextUpdateMonth,   EEPROM_MAXLEN_NEXT_UPDATE_MONTH,    EEPROM_POS_NEXT_UPDATE_MONTH);
-    eeprom.storeRaw( (char*) &nextUpdateDay,     EEPROM_MAXLEN_NEXT_UPDATE_DAY,      EEPROM_POS_NEXT_UPDATE_DAY);
-    eeprom.storeRaw( (char*) &nextUpdateWeekDay, EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY,  EEPROM_POS_NEXT_UPDATE_WEEKDAY);
-    eeprom.storeRaw( (char*) &nextUpdateHour,    EEPROM_MAXLEN_NEXT_UPDATE_HOUR,     EEPROM_POS_NEXT_UPDATE_HOUR);
-    eeprom.storeRaw( (char*) &nextUpdateMinute,  EEPROM_MAXLEN_NEXT_UPDATE_MINUTE,   EEPROM_POS_NEXT_UPDATE_MINUTE);
-    eeprom.storeRaw( (char*) &updateInterval,    EEPROM_MAXLEN_UPDATE_INTERVAL,      EEPROM_POS_UPDATE_INTERVAL);
-    eeprom.storeRaw( (char*) &updateMode,        EEPROM_MAXLEN_UPDATE_MODE,          EEPROM_POS_UPDATE_MODE);
+  eeprom.storeString( updateUrl,               EEPROM_MAXLEN_UPDATE_URL,           EEPROM_POS_UPDATE_URL);
+  eeprom.storeRaw( (char*) &lastRelease,       EEPROM_MAXLEN_LAST_RELEASE,         EEPROM_POS_LAST_RELEASE);
+  eeprom.storeRaw( (char*) &lastVersion,       EEPROM_MAXLEN_LAST_VERSION,         EEPROM_POS_LAST_VERSION);
+  eeprom.storeRaw( (char*) &lastPatchlevel,    EEPROM_MAXLEN_LAST_PATCHLEVEL,      EEPROM_POS_LAST_PATCHLEVEL);
+  eeprom.storeRaw( (char*) &lastNumber,        EEPROM_MAXLEN_LAST_NUMBER,          EEPROM_POS_LAST_NUMBER);
+  eeprom.storeRaw( (char*) &nextUpdateMonth,   EEPROM_MAXLEN_NEXT_UPDATE_MONTH,    EEPROM_POS_NEXT_UPDATE_MONTH);
+  eeprom.storeRaw( (char*) &nextUpdateDay,     EEPROM_MAXLEN_NEXT_UPDATE_DAY,      EEPROM_POS_NEXT_UPDATE_DAY);
+  eeprom.storeRaw( (char*) &nextUpdateWeekDay, EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY,  EEPROM_POS_NEXT_UPDATE_WEEKDAY);
+  eeprom.storeRaw( (char*) &nextUpdateHour,    EEPROM_MAXLEN_NEXT_UPDATE_HOUR,     EEPROM_POS_NEXT_UPDATE_HOUR);
+  eeprom.storeRaw( (char*) &nextUpdateMinute,  EEPROM_MAXLEN_NEXT_UPDATE_MINUTE,   EEPROM_POS_NEXT_UPDATE_MINUTE);
+  eeprom.storeRaw( (char*) &updateInterval,    EEPROM_MAXLEN_UPDATE_INTERVAL,      EEPROM_POS_UPDATE_INTERVAL);
+  eeprom.storeRaw( (char*) &updateMode,        EEPROM_MAXLEN_UPDATE_MODE,          EEPROM_POS_UPDATE_MODE);
 
-    eeprom.validate();
-    
-    return( retVal );
+  eeprom.validate();
+
+  return ( retVal );
 
 }
-   
+
 //
 // ------------------------------------------------------------------------
 //
@@ -1134,22 +1064,22 @@ int storeUpdateInfo()
 //
 int restoreUpdateInfo()
 {
-    int retVal = 0;
+  int retVal = 0;
 
-    eeprom.restoreString( updateUrl,               EEPROM_POS_UPDATE_URL,           EEPROM_MAXLEN_UPDATE_URL);
-    eeprom.restoreRaw( (char*) &lastRelease,       EEPROM_POS_LAST_RELEASE,         EEPROM_MAXLEN_LAST_RELEASE,        EEPROM_MAXLEN_LAST_RELEASE);
-    eeprom.restoreRaw( (char*) &lastVersion,       EEPROM_POS_LAST_VERSION,         EEPROM_MAXLEN_LAST_VERSION,        EEPROM_MAXLEN_LAST_VERSION);
-    eeprom.restoreRaw( (char*) &lastPatchlevel,    EEPROM_POS_LAST_PATCHLEVEL,      EEPROM_MAXLEN_LAST_PATCHLEVEL,     EEPROM_MAXLEN_LAST_PATCHLEVEL);
-    eeprom.restoreRaw( (char*) &lastNumber,        EEPROM_POS_LAST_NUMBER,          EEPROM_MAXLEN_LAST_NUMBER,         EEPROM_MAXLEN_LAST_NUMBER);
-    eeprom.restoreRaw( (char*) &nextUpdateMonth,   EEPROM_POS_NEXT_UPDATE_MONTH,    EEPROM_MAXLEN_NEXT_UPDATE_MONTH,   EEPROM_MAXLEN_NEXT_UPDATE_MONTH);
-    eeprom.restoreRaw( (char*) &nextUpdateDay,     EEPROM_POS_NEXT_UPDATE_DAY,      EEPROM_MAXLEN_NEXT_UPDATE_DAY,     EEPROM_MAXLEN_NEXT_UPDATE_DAY);
-    eeprom.restoreRaw( (char*) &nextUpdateWeekDay, EEPROM_POS_NEXT_UPDATE_WEEKDAY,  EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY, EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY);
-    eeprom.restoreRaw( (char*) &nextUpdateHour,    EEPROM_POS_NEXT_UPDATE_HOUR,     EEPROM_MAXLEN_NEXT_UPDATE_HOUR,    EEPROM_MAXLEN_NEXT_UPDATE_HOUR);
-    eeprom.restoreRaw( (char*) &nextUpdateMinute,  EEPROM_POS_NEXT_UPDATE_MINUTE,   EEPROM_MAXLEN_NEXT_UPDATE_MINUTE,  EEPROM_MAXLEN_NEXT_UPDATE_MINUTE);
-    eeprom.restoreRaw( (char*) &updateInterval,    EEPROM_POS_UPDATE_INTERVAL,      EEPROM_MAXLEN_UPDATE_INTERVAL,     EEPROM_MAXLEN_UPDATE_INTERVAL);
-    eeprom.restoreRaw( (char*) &updateMode,        EEPROM_POS_UPDATE_MODE,          EEPROM_MAXLEN_UPDATE_MODE,         EEPROM_MAXLEN_UPDATE_MODE);
+  eeprom.restoreString( updateUrl,               EEPROM_POS_UPDATE_URL,           EEPROM_MAXLEN_UPDATE_URL);
+  eeprom.restoreRaw( (char*) &lastRelease,       EEPROM_POS_LAST_RELEASE,         EEPROM_MAXLEN_LAST_RELEASE,        EEPROM_MAXLEN_LAST_RELEASE);
+  eeprom.restoreRaw( (char*) &lastVersion,       EEPROM_POS_LAST_VERSION,         EEPROM_MAXLEN_LAST_VERSION,        EEPROM_MAXLEN_LAST_VERSION);
+  eeprom.restoreRaw( (char*) &lastPatchlevel,    EEPROM_POS_LAST_PATCHLEVEL,      EEPROM_MAXLEN_LAST_PATCHLEVEL,     EEPROM_MAXLEN_LAST_PATCHLEVEL);
+  eeprom.restoreRaw( (char*) &lastNumber,        EEPROM_POS_LAST_NUMBER,          EEPROM_MAXLEN_LAST_NUMBER,         EEPROM_MAXLEN_LAST_NUMBER);
+  eeprom.restoreRaw( (char*) &nextUpdateMonth,   EEPROM_POS_NEXT_UPDATE_MONTH,    EEPROM_MAXLEN_NEXT_UPDATE_MONTH,   EEPROM_MAXLEN_NEXT_UPDATE_MONTH);
+  eeprom.restoreRaw( (char*) &nextUpdateDay,     EEPROM_POS_NEXT_UPDATE_DAY,      EEPROM_MAXLEN_NEXT_UPDATE_DAY,     EEPROM_MAXLEN_NEXT_UPDATE_DAY);
+  eeprom.restoreRaw( (char*) &nextUpdateWeekDay, EEPROM_POS_NEXT_UPDATE_WEEKDAY,  EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY, EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY);
+  eeprom.restoreRaw( (char*) &nextUpdateHour,    EEPROM_POS_NEXT_UPDATE_HOUR,     EEPROM_MAXLEN_NEXT_UPDATE_HOUR,    EEPROM_MAXLEN_NEXT_UPDATE_HOUR);
+  eeprom.restoreRaw( (char*) &nextUpdateMinute,  EEPROM_POS_NEXT_UPDATE_MINUTE,   EEPROM_MAXLEN_NEXT_UPDATE_MINUTE,  EEPROM_MAXLEN_NEXT_UPDATE_MINUTE);
+  eeprom.restoreRaw( (char*) &updateInterval,    EEPROM_POS_UPDATE_INTERVAL,      EEPROM_MAXLEN_UPDATE_INTERVAL,     EEPROM_MAXLEN_UPDATE_INTERVAL);
+  eeprom.restoreRaw( (char*) &updateMode,        EEPROM_POS_UPDATE_MODE,          EEPROM_MAXLEN_UPDATE_MODE,         EEPROM_MAXLEN_UPDATE_MODE);
 
-    return( retVal );
+  return ( retVal );
 }
 
 //
@@ -1161,18 +1091,18 @@ int restoreUpdateInfo()
 //
 void resetUpdateInfo2Default()
 {
-    updateUrl         = DEFAULT_UPDATE_URL;
-    lastRelease       = DEFAULT_UPDATE_LAST_RELEASE;
-    lastVersion       = DEFAULT_UPDATE_LAST_VERSION;
-    lastPatchlevel    = DEFAULT_UPDATE_LAST_PATCHLEVEL;
-    lastNumber        = DEFAULT_UPDATE_LAST_NUMBER;
-    nextUpdateMonth   = DEFAULT_UPDATE_NEXT_MONTH;
-    nextUpdateDay     = DEFAULT_UPDATE_NEXT_DAY;
-    nextUpdateWeekDay = DEFAULT_UPDATE_NEXT_WEEKDAY;
-    nextUpdateHour    = DEFAULT_UPDATE_NEXT_HOUR;
-    nextUpdateMinute  = DEFAULT_UPDATE_NEXT_MINUTE;
-    updateInterval    = DEFAULT_UPDATE_INTERVAL;
-    updateMode        = DEFAULT_UPDATE_MODE;
+  updateUrl         = DEFAULT_UPDATE_URL;
+  lastRelease       = DEFAULT_UPDATE_LAST_RELEASE;
+  lastVersion       = DEFAULT_UPDATE_LAST_VERSION;
+  lastPatchlevel    = DEFAULT_UPDATE_LAST_PATCHLEVEL;
+  lastNumber        = DEFAULT_UPDATE_LAST_NUMBER;
+  nextUpdateMonth   = DEFAULT_UPDATE_NEXT_MONTH;
+  nextUpdateDay     = DEFAULT_UPDATE_NEXT_DAY;
+  nextUpdateWeekDay = DEFAULT_UPDATE_NEXT_WEEKDAY;
+  nextUpdateHour    = DEFAULT_UPDATE_NEXT_HOUR;
+  nextUpdateMinute  = DEFAULT_UPDATE_NEXT_MINUTE;
+  updateInterval    = DEFAULT_UPDATE_INTERVAL;
+  updateMode        = DEFAULT_UPDATE_MODE;
 }
 
 //
@@ -1186,12 +1116,12 @@ void toggleRelais(int port)
 {
 
 #ifdef ESP_HAS_PCF8574
-    PCF_38.toggle(port);
+  PCF_38.toggle(port);
 #else
-    static int lastState;
+  static int lastState;
 
-    digitalWrite( port, ~lastState );
-    lastState = ~lastState;
+  digitalWrite( port, ~lastState );
+  lastState = ~lastState;
 
 #endif // ESP_HAS_PCF8574
 
@@ -1209,9 +1139,9 @@ void switchRelais(int port, int newStatus)
 {
 
 #ifdef ESP_HAS_PCF8574
-    PCF_38.write(port, newStatus);
+  PCF_38.write(port, newStatus);
 #else
-    digitalWrite( port, newStatus );
+  digitalWrite( port, newStatus );
 #endif // ESP_HAS_PCF8574
 
 }
@@ -1232,63 +1162,63 @@ void startupActions( void )
   short wrapMinutes;
   time_t utc;
 
-  utc=now();
+  utc = now();
   secsSinceEpoch = CE.toLocal(utc, &tcr);
   nowMinutes = ( hour(secsSinceEpoch) * 60 ) + minute(secsSinceEpoch);
 
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "nowMinutes is %d\n", nowMinutes );
   }
 #endif // DO_LOG
 
-  for( i = 0; i < CONNECTED_RELAIS; i++ )
+  for ( i = 0; i < CONNECTED_RELAIS; i++ )
   {
     tblEntry[i].actionFlag_1 = (ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION);
     tblEntry[i].actionFlag_2 = (ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION);
- 
+
 #ifdef DO_LOG
-    if( !beQuiet )
+    if ( !beQuiet )
     {
       Logger.Log(LOGLEVEL_DEBUG, (const char*) "setting port %d to LOW!\n", i );
     }
 #endif // DO_LOG
-   
+
     switchRelais(i, RELAIS_OFF);
 
-    if( tblEntry[i].enabled_1 )
+    if ( tblEntry[i].enabled_1 )
     {
 
-      if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      if ( tblEntry[i].mode.equalsIgnoreCase("auto") )
       {
 
         chkMinutesFrom = (atoi(tblEntry[i].hourFrom_1.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_1.c_str());
         chkMinutesTo = (atoi(tblEntry[i].hourTo_1.c_str()) * 60) + atoi(tblEntry[i].minuteTo_1.c_str());
- 
-        if( chkMinutesTo < chkMinutesFrom )
+
+        if ( chkMinutesTo < chkMinutesFrom )
         {
           // time wrap
           wrapMinutes = (23 * 60) + 59;
 #ifdef DO_LOG
-          if( !beQuiet )
+          if ( !beQuiet )
           {
             Logger.Log(LOGLEVEL_DEBUG, (const char*) "wrap minutes time 1: %d\n", wrapMinutes);
           }
 #endif // DO_LOG
 
-          if( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
+          if ( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
           {
-//
-            if( nowMinutes > chkMinutesFrom )
+            //
+            if ( nowMinutes > chkMinutesFrom )
             {
               // set this entry to active
 #ifdef DO_LOG
-              if( !beQuiet )
+              if ( !beQuiet )
               {
-                Logger.Log(LOGLEVEL_DEBUG, 
-                  (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
-                  nowMinutes, chkMinutesFrom, chkMinutesTo );
+                Logger.Log(LOGLEVEL_DEBUG,
+                           (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
+                           nowMinutes, chkMinutesFrom, chkMinutesTo );
                 Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
               }
 #endif // DO_LOG
@@ -1300,14 +1230,14 @@ void startupActions( void )
         }
         else
         {
-          if( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
+          if ( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
           {
 #ifdef DO_LOG
-            if( !beQuiet )
+            if ( !beQuiet )
             {
-              Logger.Log(LOGLEVEL_DEBUG, 
-                (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 1 ... starting action\n",
-                nowMinutes, chkMinutesFrom, chkMinutesTo );
+              Logger.Log(LOGLEVEL_DEBUG,
+                         (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 1 ... starting action\n",
+                         nowMinutes, chkMinutesFrom, chkMinutesTo );
               Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
             }
 #endif // DO_LOG
@@ -1319,7 +1249,7 @@ void startupActions( void )
       }
       else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
       {
-        if( tblEntry[i].mode.equalsIgnoreCase("on") )
+        if ( tblEntry[i].mode.equalsIgnoreCase("on") )
         {
           alwaysOn(1, i);
         }
@@ -1330,38 +1260,38 @@ void startupActions( void )
       }
     }
 
-    if( tblEntry[i].enabled_2 )
+    if ( tblEntry[i].enabled_2 )
     {
 
-      if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      if ( tblEntry[i].mode.equalsIgnoreCase("auto") )
       {
 
         chkMinutesFrom = (atoi(tblEntry[i].hourFrom_2.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_2.c_str());
         chkMinutesTo = (atoi(tblEntry[i].hourTo_2.c_str()) * 60) + atoi(tblEntry[i].minuteTo_2.c_str());
- 
-        if( chkMinutesTo < chkMinutesFrom )
+
+        if ( chkMinutesTo < chkMinutesFrom )
         {
           // time wrap
           wrapMinutes = (23 * 60) + 59;
 #ifdef DO_LOG
-          if( !beQuiet )
+          if ( !beQuiet )
           {
             Logger.Log(LOGLEVEL_DEBUG, (const char*) "wrap minutes time 2: %d\n", wrapMinutes);
           }
 #endif // DO_LOG
 
-          if( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
+          if ( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
           {
-//
-            if( nowMinutes > chkMinutesFrom )
+            //
+            if ( nowMinutes > chkMinutesFrom )
             {
               // set this entry to active
 #ifdef DO_LOG
-              if( !beQuiet )
+              if ( !beQuiet )
               {
-                Logger.Log(LOGLEVEL_DEBUG, 
-                  (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
-                  nowMinutes, chkMinutesFrom, chkMinutesTo );
+                Logger.Log(LOGLEVEL_DEBUG,
+                           (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
+                           nowMinutes, chkMinutesFrom, chkMinutesTo );
                 Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
               }
 #endif // DO_LOG
@@ -1373,15 +1303,15 @@ void startupActions( void )
         }
         else
         {
-          if( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
+          if ( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
           {
 #ifdef DO_LOG
-            if( !beQuiet )
+            if ( !beQuiet )
             {
-              Logger.Log(LOGLEVEL_DEBUG, 
-                (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
-                nowMinutes, chkMinutesFrom, chkMinutesTo );
- 
+              Logger.Log(LOGLEVEL_DEBUG,
+                         (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
+                         nowMinutes, chkMinutesFrom, chkMinutesTo );
+
               Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
             }
 #endif // DO_LOG
@@ -1393,13 +1323,13 @@ void startupActions( void )
       }
       else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
       {
-        if( tblEntry[i].mode.equalsIgnoreCase("on") )
+        if ( tblEntry[i].mode.equalsIgnoreCase("on") )
         {
           alwaysOn(2, i);
         }
         else
         {
-          if( tblEntry[i].mode.equalsIgnoreCase("off") )
+          if ( tblEntry[i].mode.equalsIgnoreCase("off") )
           {
             alwaysOff(2, i);
           }
@@ -1433,7 +1363,7 @@ void setup()
 
   IPAddress localIP;
   beQuiet = BE_QUIET;
-  
+
   pinMode(RED, OUTPUT);
   pinMode(GREEN, OUTPUT);
   pinMode(BLUE, OUTPUT);
@@ -1441,67 +1371,68 @@ void setup()
   analogWrite(RED, 0 );
   analogWrite(GREEN, 127);
   analogWrite(BLUE, 0);
-    
+
   Serial.begin(SERIAL_BAUD);
   delay(10);
 
   Logger.Init(LOGLEVEL_DEBUG, &Serial);
 
 #ifdef DO_LOG
-Logger.Log(LOGLEVEL_DEBUG,(const char*) "EEPROM_ACTION_TBL_ENTRY_START = %d\n", EEPROM_ACTION_TBL_ENTRY_START );
-Logger.Log(LOGLEVEL_DEBUG,(const char*) "EEPROM_ACTION_TBL_ENTRY_LENGTH = %d\n", EEPROM_ACTION_TBL_ENTRY_LENGTH );
-Logger.Log(LOGLEVEL_DEBUG,(const char*) "EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
-Logger.Log(LOGLEVEL_DEBUG,(const char*) "Current firmware is = %s\n", FIRMWARE_CHECK );
+  Logger.Log(LOGLEVEL_DEBUG, (const char*) "EEPROM_ACTION_TBL_ENTRY_START = %d\n", EEPROM_ACTION_TBL_ENTRY_START );
+  Logger.Log(LOGLEVEL_DEBUG, (const char*) "EEPROM_ACTION_TBL_ENTRY_LENGTH = %d\n", EEPROM_ACTION_TBL_ENTRY_LENGTH );
+  Logger.Log(LOGLEVEL_DEBUG, (const char*) "EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
+  Logger.Log(LOGLEVEL_DEBUG, (const char*) "Current firmware is = %s\n", FIRMWARE_CHECK );
 #endif // DO_LOG
 
 #ifdef ESP_HAS_PCF8574
-  Wire.begin(default_sda_pin,default_scl_pin);
-//  Wire.begin();
-//  scanIIC();
+  Wire.begin(default_sda_pin, default_scl_pin);
+  //  Wire.begin();
+  //  scanIIC();
 #endif // ESP_HAS_PCF8574
 
 
   resetAdminSettings2Default();
   resetUpdateInfo2Default();
+  resetActionTable2Default();
 
   resetActionFlags();
 
-  if( eeprom.init( EEPROM_EXT_DATA_END, eeprom.version2Magic(), LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )  
-//  if( eeprom.init( EEPROM_EXT_DATA_END, 0x00, LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )  
+  if ( eeprom.init( EEPROM_EXT_DATA_END, eeprom.version2Magic(), LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )
+//  if( eeprom.init( EEPROM_EXT_DATA_END, 0x00, LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )
   {
-    if( eeprom.isValid() )
+    if ( eeprom.isValid() )
     {
       analogWrite(GREEN, 0);
       analogWrite(BLUE, 127);
-      
+
 #ifdef DO_LOG
-      Logger.Log(LOGLEVEL_DEBUG,(const char*) "eeprom content is valid!\n");
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom content is valid!\n");
 #endif // DO_LOG
 
       crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
 
       eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
-        
+
 #ifdef DO_LOG
-      if( !beQuiet )
+      if ( !beQuiet )
       {
-          Logger.Log(LOGLEVEL_DEBUG, (const char*) "restored crc: %x calc crc: %x\n", crcRead, crcCalc);
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "restored crc: %x calc crc: %x\n", crcRead, crcCalc);
       }
 #endif // DO_LOG
 
-      if( (crcCalc == crcRead) )
+      if ( (crcCalc == crcRead) )
       {
 #ifdef DO_LOG
-        if( !beQuiet )
+        if ( !beQuiet )
         {
-            Logger.Log(LOGLEVEL_DEBUG, (const char*) "crc MATCH!\n" );
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "crc MATCH!\n" );
         }
 #endif // DO_LOG
 
         analogWrite(RED, 0 );
         analogWrite(GREEN, 127);
         analogWrite(BLUE, 0);
-      
+
         restoreAdminSettings();
         restoreAddSysvars();
         restoreActionTable();
@@ -1512,10 +1443,11 @@ Logger.Log(LOGLEVEL_DEBUG,(const char*) "Current firmware is = %s\n", FIRMWARE_C
         analogWrite(RED, 127 );
         analogWrite(GREEN, 0);
         analogWrite(BLUE, 0);
-      
-        eeprom.wipe();  
+
+        eeprom.wipe();
         resetAdminSettings2Default();
         resetUpdateInfo2Default();
+        resetActionTable2Default();
         storeAdminSettings();
         storeAddSysvars();
         storeActionTable();
@@ -1529,10 +1461,11 @@ Logger.Log(LOGLEVEL_DEBUG,(const char*) "Current firmware is = %s\n", FIRMWARE_C
       analogWrite(RED, 127 );
       analogWrite(GREEN, 0);
       analogWrite(BLUE, 0);
-      
-      eeprom.wipe();  
+
+      eeprom.wipe();
       resetAdminSettings2Default();
       resetUpdateInfo2Default();
+      resetActionTable2Default();
       storeAdminSettings();
       storeAddSysvars();
       storeActionTable();
@@ -1547,30 +1480,22 @@ Logger.Log(LOGLEVEL_DEBUG,(const char*) "Current firmware is = %s\n", FIRMWARE_C
     analogWrite(GREEN, 0);
     analogWrite(BLUE, 0);
 
-    eeprom.wipe();    
+    eeprom.wipe();
     resetAdminSettings2Default();
     resetUpdateInfo2Default();
+    resetActionTable2Default();
     storeAdminSettings();
     storeAddSysvars();
-    storeActionTable();      
+    storeActionTable();
     storeUpdateInfo();
     eeprom.setMagic( eeprom.version2Magic() );
     eeprom.validate();
   }
 
-//    updateUrl         = DEFAULT_UPDATE_URL;
-//    storeUpdateInfo();
-//    eeprom.validate();
-// #ifdef DO_LOG
-//      if( !beQuiet )
-//      {
-//          Logger.Log(LOGLEVEL_DEBUG, (const char*) "update reset to default %s\n", updateUrl.c_str());
-//      }
-// #endif // DO_LOG
-        
+
 
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "Connecting to >%s< using password >%s<\n", wlanSSID.c_str(), wlanPassphrase.c_str());
   }
@@ -1579,33 +1504,33 @@ Logger.Log(LOGLEVEL_DEBUG,(const char*) "Current firmware is = %s\n", FIRMWARE_C
   WiFi.mode(WIFI_STA);
 
   lastMillis = millis();
-  while( millis() - lastMillis < AUTO_RECONNECT_SECONDS && WiFi.status() != WL_CONNECTED) 
+  while ( millis() - lastMillis < AUTO_RECONNECT_SECONDS && WiFi.status() != WL_CONNECTED)
   {
     delay(500);
   }
 
-  if( WiFi.status() != WL_CONNECTED )
+  if ( WiFi.status() != WL_CONNECTED )
   {
     WiFi.begin(wlanSSID.c_str(), wlanPassphrase.c_str());
-    while( WiFi.status() != WL_CONNECTED ) 
+    while ( WiFi.status() != WL_CONNECTED )
     {
       delay(500);
     }
   }
-  
+
   analogWrite(RED, 0 );
   analogWrite(GREEN, 127);
   analogWrite(BLUE, 0);
 
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "WiFi connected\n" );
   }
 #endif // DO_LOG
 
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "Starting NTP over UDP\n");
   }
@@ -1614,7 +1539,7 @@ Logger.Log(LOGLEVEL_DEBUG,(const char*) "Current firmware is = %s\n", FIRMWARE_C
   Udp.begin(localUDPPort);
 
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "Local port: %d ... waiting for time sync", Udp.localPort());
   }
@@ -1626,14 +1551,14 @@ Logger.Log(LOGLEVEL_DEBUG,(const char*) "Current firmware is = %s\n", FIRMWARE_C
   setTime(now());
 
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "Time synced via NTP. Sync interval is set to %d seconds.\n", SECS_PER_HOUR );
   }
 #endif // DO_LOG
 
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "Starting HTTP server\n");
   }
@@ -1649,14 +1574,14 @@ Logger.Log(LOGLEVEL_DEBUG,(const char*) "Current firmware is = %s\n", FIRMWARE_C
   wwwServerIP = localIP.toString();
 
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "Webserver started. URL is: http://%s:%d\n", wwwServerIP.c_str(), wwwServerPort.toInt());
   }
 #endif // DO_LOG
- 
+
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "Startup actions ...\n");
   }
@@ -1664,8 +1589,8 @@ Logger.Log(LOGLEVEL_DEBUG,(const char*) "Current firmware is = %s\n", FIRMWARE_C
 
   startupActions();
 
-  dumpInfo();   
-      
+  dumpInfo();
+
 }
 
 
@@ -1684,7 +1609,7 @@ void scanIIC()
   Serial.println("Scanning...");
 
   nDevices = 0;
-  for(address = 1; address < 127; address++ ) 
+  for (address = 1; address < 127; address++ )
   {
     // The i2c_scanner uses the return value of
     // the Write.endTransmisstion to see if
@@ -1695,20 +1620,20 @@ void scanIIC()
     if (error == 0)
     {
       Serial.print("I2C device found at address 0x");
-      if (address<16) 
+      if (address < 16)
         Serial.print("0");
-      Serial.print(address,HEX);
+      Serial.print(address, HEX);
       Serial.println("  !");
 
       nDevices++;
     }
-    else if (error==4) 
+    else if (error == 4)
     {
       Serial.print("Unknow error at address 0x");
-      if (address<16) 
+      if (address < 16)
         Serial.print("0");
-      Serial.println(address,HEX);
-    }    
+      Serial.println(address, HEX);
+    }
   }
   if (nDevices == 0)
     Serial.println("No I2C devices found\n");
@@ -1727,24 +1652,24 @@ void alwaysOn(int timerNo, int port)
 {
 
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, (const char*) "... check always on for port %d and timer = %d, flag #1 is %d, flag #2 is %d\n", 
-      port, timerNo, tblEntry[port].actionFlag_1, tblEntry[port].actionFlag_2);
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "... check always on for port %d and timer = %d, flag #1 is %d, flag #2 is %d\n",
+               port, timerNo, tblEntry[port].actionFlag_1, tblEntry[port].actionFlag_2);
   }
 #endif // DO_LOG
 
 
-  if( timerNo == 1 )
+  if ( timerNo == 1 )
   {
-    if( (tblEntry[port].actionFlag_1 & ACTION_FLAG_ALWAYS_ON) == 0 )
+    if ( (tblEntry[port].actionFlag_1 & ACTION_FLAG_ALWAYS_ON) == 0 )
     {
       tblEntry[port].actionFlag_1 |= ACTION_FLAG_ALWAYS_ON;
       tblEntry[port].actionFlag_1 |= ACTION_FLAG_ACTIVE;
       switchRelais(port, RELAIS_ON);
 
 #ifdef DO_LOG
-      if( !beQuiet )
+      if ( !beQuiet )
       {
         Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #1 is manual ALWAYS ON\n", port);
       }
@@ -1754,16 +1679,16 @@ void alwaysOn(int timerNo, int port)
   }
   else
   {
-    if( timerNo == 2 )
+    if ( timerNo == 2 )
     {
-      if( (tblEntry[port].actionFlag_2 & ACTION_FLAG_ALWAYS_ON) == 0 )
+      if ( (tblEntry[port].actionFlag_2 & ACTION_FLAG_ALWAYS_ON) == 0 )
       {
         tblEntry[port].actionFlag_2 |= ACTION_FLAG_ALWAYS_ON;
         tblEntry[port].actionFlag_2 |= ACTION_FLAG_ACTIVE;
         switchRelais(port, RELAIS_ON);
 
 #ifdef DO_LOG
-        if( !beQuiet )
+        if ( !beQuiet )
         {
           Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #2 is manual ALWAYS ON\n", port);
         }
@@ -1785,22 +1710,22 @@ void alwaysOff(int timerNo, int port)
 {
 
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "... check always off for port %d and timer = %d, flag #1 is %d, flag #2 is\n", port, timerNo, tblEntry[port].actionFlag_1, tblEntry[port].actionFlag_2);
   }
 #endif // DO_LOG
 
-  if( timerNo == 1 )
+  if ( timerNo == 1 )
   {
-    if( (tblEntry[port].actionFlag_1 & ACTION_FLAG_ALWAYS_OFF) == 0 )
+    if ( (tblEntry[port].actionFlag_1 & ACTION_FLAG_ALWAYS_OFF) == 0 )
     {
       tblEntry[port].actionFlag_1 |= ACTION_FLAG_ALWAYS_OFF;
       tblEntry[port].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
       switchRelais(port, RELAIS_OFF);
 
 #ifdef DO_LOG
-      if( !beQuiet )
+      if ( !beQuiet )
       {
         Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #1 is manual ALWAYS OFF\n", port);
       }
@@ -1810,16 +1735,16 @@ void alwaysOff(int timerNo, int port)
   }
   else
   {
-    if( timerNo == 2 )
+    if ( timerNo == 2 )
     {
-      if( (tblEntry[port].actionFlag_2 & ACTION_FLAG_ALWAYS_OFF) == 0 )
+      if ( (tblEntry[port].actionFlag_2 & ACTION_FLAG_ALWAYS_OFF) == 0 )
       {
         tblEntry[port].actionFlag_2 |= ACTION_FLAG_ALWAYS_OFF;
         tblEntry[port].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
         switchRelais(port, RELAIS_OFF);
 
 #ifdef DO_LOG
-        if( !beQuiet )
+        if ( !beQuiet )
         {
           Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #2 is manual ALWAYS OFF\n", port);
         }
@@ -1848,50 +1773,50 @@ int check4Action( void )
   short chkMinutesFrom, chkMinutesTo;
   time_t utc;
 
-  utc=now();
+  utc = now();
   secsSinceEpoch = CE.toLocal(utc, &tcr);
   nowMinutes = ( hour(secsSinceEpoch) * 60 ) + minute(secsSinceEpoch);
 
 #ifdef DO_LOG
-  if( !beQuiet )
+  if ( !beQuiet )
   {
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "check4Action: check for minute-value: %d\n", nowMinutes );
   }
 #endif // DO_LOG
 
-//  for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
-  for( i = 0; i < CONNECTED_RELAIS; i++ )
+  //  for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
+  for ( i = 0; i < CONNECTED_RELAIS; i++ )
   {
 
-    if( tblEntry[i].enabled_1 )
+    if ( tblEntry[i].enabled_1 )
     {
 
-      if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      if ( tblEntry[i].mode.equalsIgnoreCase("auto") )
       {
 
         chkMinutesFrom = (atoi(tblEntry[i].hourFrom_1.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_1.c_str());
         chkMinutesTo = (atoi(tblEntry[i].hourTo_1.c_str()) * 60) + atoi(tblEntry[i].minuteTo_1.c_str());
 
-        if( chkMinutesFrom == nowMinutes )
+        if ( chkMinutesFrom == nowMinutes )
         {
 #ifdef DO_LOG
-          if( !beQuiet )
+          if ( !beQuiet )
           {
-            Logger.Log(LOGLEVEL_DEBUG, 
-              (const char*) "action is time 1 - Begin %s:%s [%d] port %d. Actionflag is %d\n", 
-              tblEntry[i].hourFrom_1.c_str(), tblEntry[i].minuteFrom_1.c_str(),
-              chkMinutesFrom, i, tblEntry[i].actionFlag_1);
+            Logger.Log(LOGLEVEL_DEBUG,
+                       (const char*) "action is time 1 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
+                       tblEntry[i].hourFrom_1.c_str(), tblEntry[i].minuteFrom_1.c_str(),
+                       chkMinutesFrom, i, tblEntry[i].actionFlag_1);
           }
 #endif // DO_LOG
 
-          if( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) == 0 )
+          if ( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) == 0 )
           {
             tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
 
             switchRelais(i, RELAIS_ON);
 
 #ifdef DO_LOG
-            if( !beQuiet )
+            if ( !beQuiet )
             {
               Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 1 to active\n");
             }
@@ -1899,25 +1824,25 @@ int check4Action( void )
           }
         }
 
-        if(chkMinutesTo == nowMinutes )
+        if (chkMinutesTo == nowMinutes )
         {
 #ifdef DO_LOG
-          if( !beQuiet )
+          if ( !beQuiet )
           {
-            Logger.Log(LOGLEVEL_DEBUG, 
-              (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
-              tblEntry[i].hourTo_1.c_str(), tblEntry[i].minuteTo_1.c_str(),
-              chkMinutesTo, i, tblEntry[i].actionFlag_1);
+            Logger.Log(LOGLEVEL_DEBUG,
+                       (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
+                       tblEntry[i].hourTo_1.c_str(), tblEntry[i].minuteTo_1.c_str(),
+                       chkMinutesTo, i, tblEntry[i].actionFlag_1);
           }
 #endif // DO_LOG
 
-          if( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) != 0 )
+          if ( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) != 0 )
           {
             tblEntry[i].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_OFF);
 
 #ifdef DO_LOG
-            if( !beQuiet )
+            if ( !beQuiet )
             {
               Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 1 to inactive\n");
             }
@@ -1926,7 +1851,7 @@ int check4Action( void )
           else
           {
 #ifdef DO_LOG
-            if( !beQuiet )
+            if ( !beQuiet )
             {
               Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... actionFlag for time 1 is already inactive\n");
             }
@@ -1937,19 +1862,19 @@ int check4Action( void )
       else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
       {
 #ifdef DO_LOG
-        if( !beQuiet )
+        if ( !beQuiet )
         {
           Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #1 is not auto\n", i);
         }
 #endif // DO_LOG
 
-        if( tblEntry[i].mode.equalsIgnoreCase("on") )
+        if ( tblEntry[i].mode.equalsIgnoreCase("on") )
         {
           alwaysOn(1, i);
         }
         else
         {
-          if( tblEntry[i].mode.equalsIgnoreCase("off") )
+          if ( tblEntry[i].mode.equalsIgnoreCase("off") )
           {
             alwaysOff(1, i);
           }
@@ -1959,39 +1884,39 @@ int check4Action( void )
     else // if( tblEntry[i].enabled_1 )
     {
 #ifdef DO_LOG
-      if( !beQuiet )
+      if ( !beQuiet )
       {
         Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... entry for port %d time #1 disabled\n", i);
       }
 #endif // DO_LOG
     }
 
-    if( tblEntry[i].enabled_2 )
+    if ( tblEntry[i].enabled_2 )
     {
-      if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      if ( tblEntry[i].mode.equalsIgnoreCase("auto") )
       {
         chkMinutesFrom = (atoi(tblEntry[i].hourFrom_2.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_2.c_str());
         chkMinutesTo = (atoi(tblEntry[i].hourTo_2.c_str()) * 60) + atoi(tblEntry[i].minuteTo_2.c_str());
 
-        if(chkMinutesFrom == nowMinutes )
+        if (chkMinutesFrom == nowMinutes )
         {
 #ifdef DO_LOG
-          if( !beQuiet )
+          if ( !beQuiet )
           {
-            Logger.Log(LOGLEVEL_DEBUG, 
-              (const char*) "action is time 2 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
-              tblEntry[i].hourFrom_2.c_str(), tblEntry[i].minuteFrom_2.c_str(),
-              chkMinutesFrom, i, tblEntry[i].actionFlag_2);
+            Logger.Log(LOGLEVEL_DEBUG,
+                       (const char*) "action is time 2 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
+                       tblEntry[i].hourFrom_2.c_str(), tblEntry[i].minuteFrom_2.c_str(),
+                       chkMinutesFrom, i, tblEntry[i].actionFlag_2);
           }
 #endif // DO_LOG
 
-          if( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) == 0 )
+          if ( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) == 0 )
           {
             tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_ON);
-  
+
 #ifdef DO_LOG
-            if( !beQuiet )
+            if ( !beQuiet )
             {
               Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 2 to active\n");
             }
@@ -1999,25 +1924,25 @@ int check4Action( void )
           }
         }
 
-        if(chkMinutesTo == nowMinutes )
+        if (chkMinutesTo == nowMinutes )
         {
 #ifdef DO_LOG
-          if( !beQuiet )
+          if ( !beQuiet )
           {
-            Logger.Log(LOGLEVEL_DEBUG, 
-              (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
-              tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str(),
-              chkMinutesTo, i, tblEntry[i].actionFlag_2);
+            Logger.Log(LOGLEVEL_DEBUG,
+                       (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
+                       tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str(),
+                       chkMinutesTo, i, tblEntry[i].actionFlag_2);
           }
 #endif // DO_LOG
 
-          if( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) != 0 )
+          if ( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) != 0 )
           {
             tblEntry[i].actionFlag_2 &= ~ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_OFF);
 
 #ifdef DO_LOG
-            if( !beQuiet )
+            if ( !beQuiet )
             {
               Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 2 to inactive\n");
             }
@@ -2026,7 +1951,7 @@ int check4Action( void )
           else
           {
 #ifdef DO_LOG
-            if( !beQuiet )
+            if ( !beQuiet )
             {
               Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... actionFlag for time 2 is already inactive\n");
             }
@@ -2037,13 +1962,13 @@ int check4Action( void )
       else // if( tblEntry[tmRow-1].mode.equalsIgnoreCase("auto") )
       {
 #ifdef DO_LOG
-        if( !beQuiet )
+        if ( !beQuiet )
         {
           Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #2 is not auto\n", i);
         }
 #endif // DO_LOG
 
-        if( tblEntry[i].mode.equalsIgnoreCase("on") )
+        if ( tblEntry[i].mode.equalsIgnoreCase("on") )
         {
           alwaysOn(2, i);
         }
@@ -2056,7 +1981,7 @@ int check4Action( void )
     else // if( tblEntry[i].enabled_2 )
     {
 #ifdef DO_LOG
-      if( !beQuiet )
+      if ( !beQuiet )
       {
         Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... entry for port %d time #2 disabled\n", i);
       }
@@ -2064,7 +1989,7 @@ int check4Action( void )
     }
   }
 
-  return( retVal );
+  return ( retVal );
 }
 
 //
@@ -2076,104 +2001,104 @@ int check4Action( void )
 //
 int handleUpdate( void )
 {
-    static t_httpUpdate_return retVal;
-    String newFirmwareFile, markerFile;
-    HTTPClient http;
-    int httpCode;
+  static t_httpUpdate_return retVal;
+  String newFirmwareFile, markerFile;
+  HTTPClient http;
+  int httpCode;
 
-//    ESPhttpUpdate.rebootOnUpdate( true );
+  //    ESPhttpUpdate.rebootOnUpdate( true );
 
-    newFirmwareFile = updateUrl + String("firmware.bin") + String(lastNumber+1);
-    markerFile = updateUrl + String("firmware.") + String(lastNumber+1);
-    
-    http.begin(markerFile.c_str());  
-    httpCode = http.GET();
-    if(httpCode == HTTP_CODE_OK)
+  newFirmwareFile = updateUrl + String("firmware.bin") + String(lastNumber + 1);
+  markerFile = updateUrl + String("firmware.") + String(lastNumber + 1);
+
+  http.begin(markerFile.c_str());
+  httpCode = http.GET();
+  if (httpCode == HTTP_CODE_OK)
+  {
+    // #ifdef DO_LOG
+    if ( !beQuiet )
     {
-// #ifdef DO_LOG
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, (const char*) "marker file %s exists\n", markerFile.c_str());
-        }
-// #endif // DO_LOG
-      
-        http.end();
-        lastNumber++;
-        storeUpdateInfo();   
-             
-// #ifdef DO_LOG
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, (const char*) "Handle update, next firmware is: %s\n", newFirmwareFile.c_str());
-        }
-// #endif // DO_LOG
-        retVal = ESPhttpUpdate.update(newFirmwareFile.c_str());
-  
-//        retVal = ESPhttpUpdate.update(newFirmwareFile.c_str());
-
-// #ifdef DO_LOG
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, (const char*) "Update done retval was %x\n", retVal);
-        }
-// #endif // DO_LOG
-
-
-//        switch( (retVal = ESPhttpUpdate.update(newFirmwareFile.c_str())) )
-        switch( retVal )
-        {
-            case HTTP_UPDATE_FAILED:
-// #ifdef DO_LOG
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_FAILED! Error (%d): %s\n", 
-                               ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-                }
-// #endif // DO_LOG
-                break;
-            case HTTP_UPDATE_NO_UPDATES:
-//                lastNumber++;
-//                storeUpdateInfo();
-// #ifdef DO_LOG
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_NO_UPDATES\n");
-                }
-// #endif // DO_LOG
-            break;
-        case HTTP_UPDATE_OK:
-//                lastNumber++;
-//                storeUpdateInfo();
-// #ifdef DO_LOG            
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_OK - lastNumber = %d\n", lastNumber);
-                }
-// #endif // DO_LOG
-                break;
-            default:
-// #ifdef DO_LOG
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, (const char*) "Unknown retval %d\n", (int) retVal);
-                }
-// #endif // DO_LOG
-                break;
-        }
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "marker file %s exists\n", markerFile.c_str());
     }
-    else
+    // #endif // DO_LOG
+
+    http.end();
+    lastNumber++;
+    storeUpdateInfo();
+
+    // #ifdef DO_LOG
+    if ( !beQuiet )
     {
-// #ifdef DO_LOG
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, (const char*) "NO marker file %s\n", markerFile.c_str());
-        }
-// #endif // DO_LOG
-
-        http.end();
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "Handle update, next firmware is: %s\n", newFirmwareFile.c_str());
     }
+    // #endif // DO_LOG
+    retVal = ESPhttpUpdate.update(newFirmwareFile.c_str());
 
-    return((int) retVal);
+    //        retVal = ESPhttpUpdate.update(newFirmwareFile.c_str());
+
+    // #ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "Update done retval was %x\n", retVal);
+    }
+    // #endif // DO_LOG
+
+
+    //        switch( (retVal = ESPhttpUpdate.update(newFirmwareFile.c_str())) )
+    switch ( retVal )
+    {
+      case HTTP_UPDATE_FAILED:
+        // #ifdef DO_LOG
+        if ( !beQuiet )
+        {
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_FAILED! Error (%d): %s\n",
+                     ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+        }
+        // #endif // DO_LOG
+        break;
+      case HTTP_UPDATE_NO_UPDATES:
+        //                lastNumber++;
+        //                storeUpdateInfo();
+        // #ifdef DO_LOG
+        if ( !beQuiet )
+        {
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_NO_UPDATES\n");
+        }
+        // #endif // DO_LOG
+        break;
+      case HTTP_UPDATE_OK:
+        //                lastNumber++;
+        //                storeUpdateInfo();
+        // #ifdef DO_LOG
+        if ( !beQuiet )
+        {
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_OK - lastNumber = %d\n", lastNumber);
+        }
+        // #endif // DO_LOG
+        break;
+      default:
+        // #ifdef DO_LOG
+        if ( !beQuiet )
+        {
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "Unknown retval %d\n", (int) retVal);
+        }
+        // #endif // DO_LOG
+        break;
+    }
+  }
+  else
+  {
+    // #ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "NO marker file %s\n", markerFile.c_str());
+    }
+    // #endif // DO_LOG
+
+    http.end();
+  }
+
+  return ((int) retVal);
 }
 
 //
@@ -2191,51 +2116,51 @@ void loop()
   static short minutesLastCheck;
   time_t utc;
 
-  utc=now();
+  utc = now();
   secsSinceEpoch = CE.toLocal(utc, &tcr);
   nowMinutes = ( hour(secsSinceEpoch) * 60 ) + minute(secsSinceEpoch);
 
-  // the weekday now (Sunday is day 1) 
-  if( weekday(secsSinceEpoch) != lastUpdateCheck )
+  // the weekday now (Sunday is day 1)
+  if ( weekday(secsSinceEpoch) != lastUpdateCheck )
   {
 #ifdef DO_LOG
-    if( !beQuiet )
+    if ( !beQuiet )
     {
-      Logger.Log(LOGLEVEL_DEBUG, (const char*) "loop: day has changed from %d to %d\n", 
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "loop: day has changed from %d to %d\n",
                  lastUpdateCheck, weekday(secsSinceEpoch));
     }
 #endif // DO_LOG
 
-//    if( handleUpdate() == HTTP_UPDATE_OK )
-//    {
-//        HTTP_UPDATE_FAILED
-//        HTTP_UPDATE_NO_UPDATES
+    //    if( handleUpdate() == HTTP_UPDATE_OK )
+    //    {
+    //        HTTP_UPDATE_FAILED
+    //        HTTP_UPDATE_NO_UPDATES
 
-//      lastUpdateCheck = weekday(secsSinceEpoch);
-//    }
+    //      lastUpdateCheck = weekday(secsSinceEpoch);
+    //    }
   }
 
-    server.handleClient();
+  server.handleClient();
 
-    if( nowMinutes > minutesLastCheck )
-    {
+  if ( nowMinutes > minutesLastCheck )
+  {
 #ifdef DO_LOG
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, (const char*) "loop: hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
-        }
+    if ( !beQuiet )
+    {
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "loop: hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
+    }
 #endif // DO_LOG
 
-        minutesLastCheck = nowMinutes;
-        check4Action();
-        delay(2);
+    minutesLastCheck = nowMinutes;
+    check4Action();
+    delay(2);
 
-        handleUpdate(); // <- RAUS!!
-    }
-    else
-    {
-        delay(5);
-    }
+    handleUpdate(); // <- RAUS!!
+  }
+  else
+  {
+    delay(5);
+  }
 
 
 }
@@ -2243,10 +2168,17 @@ void loop()
 
 /* ************** ++++++++++ ************* +++++++++++++++ */
 
-void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, char* sRow, char *sHour, char* sMinute )
+void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, char* sRow, const char *sHour, const char* sMinute )
 {
   char sNum[10];
   sprintf(sNum, "%d", tmNum);
+
+#ifdef DO_LOG
+  if ( !beQuiet )
+  {
+    Logger.Log( LOGLEVEL_DEBUG, (const char*) "sMinute is %s\n", sMinute );
+  }
+#endif // DO_LOG
 
   pageContent += "<td align=\"center\" bgcolor=\"";
   // loght cyan #07F479  or grey #D4C9C9
@@ -2259,7 +2191,7 @@ void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, ch
 
   pageContent += "</label><br>\n";
 
-// Stunde
+  // Stunde
 
   pageContent += "<input type=\"textdate\" name=\"h";
   pageContent += sTarget;        // = "from" or "to"
@@ -2274,7 +2206,7 @@ void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, ch
 
   pageContent += " Uhr ";
 
-// Minute
+  // Minute
 
   pageContent += "<input type=\"textdate\" name=\"m";
   pageContent += sTarget;        // = "from" or "to"
@@ -2292,21 +2224,40 @@ void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, ch
 
 void doTimeSelect( int tmNum, int tmRow, char* sRow )
 {
-  if( tmNum == 1 )
+  if ( tmNum == 1 )
   {
-    doTimeOnSelect( (char*)"from", (char*)"einschalten", (char*)"#07F479", tmNum, sRow,
-                     (char*)tblEntry[tmRow-1].hourFrom_1.c_str(), (char*)tblEntry[tmRow-1].minuteFrom_1.c_str() );
+    doTimeOnSelect( "from", "einschalten", "#07F479", tmNum, sRow,
+                    tblEntry[tmRow - 1].hourFrom_1.c_str(), tblEntry[tmRow - 1].minuteFrom_1.c_str() );
 
-    doTimeOnSelect( (char*)"to",   (char*)"ausschalten", (char*)"#D4C9C9" , tmNum, sRow,
-                     (char*)tblEntry[tmRow-1].hourTo_1.c_str(), (char*)tblEntry[tmRow-1].minuteTo_1.c_str() );
+    doTimeOnSelect( "to", "ausschalten", "#D4C9C9" , tmNum, sRow,
+                    tblEntry[tmRow - 1].hourTo_1.c_str(), tblEntry[tmRow - 1].minuteTo_1.c_str() );
   }
   else
   {
-    doTimeOnSelect( (char*)"from", (char*)"einschalten", (char*)"#07F479", tmNum, sRow,
-                    (char*)tblEntry[tmRow-1].hourFrom_2.c_str(), (char*)tblEntry[tmRow-1].minuteFrom_2.c_str() );
+    if ( tmNum == 2 )
+    {
+      doTimeOnSelect( "from", "einschalten", "#07F479", tmNum, sRow,
+                    tblEntry[tmRow - 1].hourFrom_2.c_str(), tblEntry[tmRow - 1].minuteFrom_2.c_str() );
 
-    doTimeOnSelect( (char*)"to",   (char*)"ausschalten", (char*)"#D4C9C9" , tmNum, sRow,
-                    (char*)tblEntry[tmRow-1].hourTo_2.c_str(), (char*)tblEntry[tmRow-1].minuteTo_2.c_str() );
+#ifdef DO_LOG
+  if ( !beQuiet )
+  {
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "doTimeSelect -> tblEntry[%d].minuteFrom_2.c_str(): %s\n",
+               (tmRow - 1), tblEntry[tmRow - 1].minuteFrom_2.c_str() );
+  }
+#endif // DO_LOG
+
+      doTimeOnSelect( "to", "ausschalten", "#D4C9C9" , tmNum, sRow,
+                    tblEntry[tmRow - 1].hourTo_2.c_str(), tblEntry[tmRow - 1].minuteTo_2.c_str() );
+#ifdef DO_LOG
+  if ( !beQuiet )
+  {
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "doTimeSelect -> tblEntry[%d].minuteTo_2.c_str(): %s\n",
+               (tmRow - 1), tblEntry[tmRow - 1].minuteTo_2.c_str() );
+  }
+#endif // DO_LOG
+
+    }
   }
 }
 
@@ -2320,22 +2271,21 @@ void doCreateLine( int tmRow )
   pageContent += "<td>\n";
   pageContent += "<input type=\"text\" name=\"bezeichner";
   pageContent += sRow;
-  
+
   pageContent += "\" value=\"";
-  pageContent += tblEntry[tmRow-1].name;  
+  pageContent += tblEntry[tmRow - 1].name;
   pageContent += "\" size=\"4\" maxlength=\"10\">\n";
   //
   pageContent += "</td>\n";
 
-// ---- ++++++++++ ZEIT 1 enable/disable ++++++++++ -----
-  
+  // ---- ++++++++++ ZEIT 1 enable/disable ++++++++++ -----
+
   pageContent += "<td bgcolor=\"#09CEF3\">\n";
   //
-  pageContent += "<input type=\"checkbox\" name=\"enabled";
-  pageContent += "1_";
+  pageContent += "<input type=\"checkbox\" name=\"enabled1_";
   pageContent += sRow;
   pageContent += "\" value=\"aktiv\" ";
-  if( tblEntry[tmRow-1].enabled_1 )
+  if ( tblEntry[tmRow - 1].enabled_1 )
   {
     pageContent += " checked ";
   }
@@ -2345,15 +2295,14 @@ void doCreateLine( int tmRow )
   pageContent += "</td>\n";
   doTimeSelect( 1, tmRow, sRow);
 
-// ---- ++++++++++ ZEIT 2 enable/disable ++++++++++ -----
-  
+  // ---- ++++++++++ ZEIT 2 enable/disable ++++++++++ -----
+
   pageContent += "<td bgcolor=\"#09CEF3\">\n";
-  //  
-  pageContent += " <input type=\"checkbox\" name=\"enabled";
-  pageContent += "2_";
+  //
+  pageContent += " <input type=\"checkbox\" name=\"enabled2_";
   pageContent += sRow;
   pageContent += "\" value=\"aktiv\" ";
-  if( tblEntry[tmRow-1].enabled_2 )
+  if ( tblEntry[tmRow - 1].enabled_2 )
   {
     pageContent += " checked ";
   }
@@ -2363,80 +2312,78 @@ void doCreateLine( int tmRow )
   pageContent += "</td>\n";
   doTimeSelect( 2, tmRow, sRow);
 
-  pageContent +="<td>\n";
+  pageContent += "<td>\n";
 
-// ---- ++++++++++ EXT 1 enable/disable ++++++++++ -----
+  // ---- ++++++++++ EXT 1 enable/disable ++++++++++ -----
 
-  pageContent +="<input type=\"checkbox\" name=\"ext";
-  pageContent += "1_";
+  pageContent += "<input type=\"checkbox\" name=\"ext1_";
   pageContent += sRow;
-  pageContent += "\" value=\"aktiv\"";
-  if( tblEntry[tmRow-1].extEnable_1 )
+  pageContent += "\" value=\"aktiv\" ";
+  if ( tblEntry[tmRow - 1].extEnable_1 )
   {
     pageContent += " checked ";
   }
   pageContent += "size=\"1\">\n";
-//
-  pageContent +="<label>Ext 1</label>\n";
-  pageContent +="<br>\n";
+  //
+  pageContent += "<label>Ext 1</label>\n";
+  pageContent += "<br>\n";
 
-// ---- ++++++++++ EXT 2 enable/disable ++++++++++ -----
-  
-  pageContent +="<input type=\"checkbox\" name=\"ext";
-  pageContent += "2_";
+  // ---- ++++++++++ EXT 2 enable/disable ++++++++++ -----
+
+  pageContent += "<input type=\"checkbox\" name=\"ext2_";
   pageContent += sRow;
-  pageContent += "\" value=\"aktiv\"";
-  if( tblEntry[tmRow-1].extEnable_2 )
+  pageContent += "\" value=\"aktiv\" ";
+  if ( tblEntry[tmRow - 1].extEnable_2 )
   {
     pageContent += " checked ";
   }
   pageContent += "size=\"1\">\n";
-  pageContent +="<label>Ext 2</label>";
+  pageContent += "<label>Ext 2</label>";
 
-  pageContent +="</td>";
-  pageContent +="<td>\n";
+  pageContent += "</td>";
+  pageContent += "<td>\n";
 
-// ---- ++++++++++ MODE ON ++++++++++ -----
+  // ---- ++++++++++ MODE ON ++++++++++ -----
 
-  pageContent +="<input type=\"radio\" name=\"mode";
+  pageContent += "<input type=\"radio\" name=\"mode";
   pageContent += sRow;
-  pageContent += "\" value=\"on\"";
-  if( tblEntry[tmRow-1].mode.equalsIgnoreCase("on") )
+  pageContent += "\" value=\"on\" ";
+  if ( tblEntry[tmRow - 1].mode.equalsIgnoreCase("on") )
   {
     pageContent += " checked ";
   }
   pageContent += "size=\"1\">\n";
-  pageContent +="<label>Ein</label>\n";
-  pageContent +="<br>\n";
+  pageContent += "<label>Ein</label>\n";
+  pageContent += "<br>\n";
 
-// ---- ++++++++++ MODE OFF ++++++++++ -----
+  // ---- ++++++++++ MODE OFF ++++++++++ -----
 
-  pageContent +="<input type=\"radio\" name=\"mode";
+  pageContent += "<input type=\"radio\" name=\"mode";
   pageContent += sRow;
-  pageContent += "\" value=\"off\"";
-  if( tblEntry[tmRow-1].mode.equalsIgnoreCase("off") )
+  pageContent += "\" value=\"off\" ";
+  if ( tblEntry[tmRow - 1].mode.equalsIgnoreCase("off") )
   {
     pageContent += " checked ";
   }
   pageContent += "size=\"1\">\n";
-  pageContent +="<label>Aus</label>\n";
-  pageContent +="<br>\n";
-  
-// ---- ++++++++++ MODE AUTO ++++++++++ -----
+  pageContent += "<label>Aus</label>\n";
+  pageContent += "<br>\n";
 
-  pageContent +="        <input type=\"radio\" name=\"mode";
+  // ---- ++++++++++ MODE AUTO ++++++++++ -----
+
+  pageContent += "<input type=\"radio\" name=\"mode";
   pageContent += sRow;
-  pageContent += "\" value=\"auto\"";
-  if( tblEntry[tmRow-1].mode.equalsIgnoreCase("auto") )
+  pageContent += "\" value=\"auto\" ";
+  if ( tblEntry[tmRow - 1].mode.equalsIgnoreCase("auto") )
   {
     pageContent += " checked ";
   }
   pageContent += "size=\"1\">\n";
-  pageContent +="<label>Auto</label>\n";
-// ---------
-  pageContent +="      </td>\n";
+  pageContent += "<label>Auto</label>\n";
+  // ---------
+  pageContent += "</td>\n";
 
-// end Zeile ...
+  // end Zeile ...
 
 }
 
@@ -2444,114 +2391,220 @@ void doCreateLine( int tmRow )
 void setupPage()
 {
 
-    int i;
-    IPAddress localIP;
+  int i;
+  IPAddress localIP;
 
-    pageContent = "";
-    localIP = WiFi.localIP();
+  pageContent = "";
+  localIP = WiFi.localIP();
 
 #ifdef DO_LOG
-    if( !beQuiet )
+  if ( !beQuiet )
+  {
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "handleIndexPage\n");
+  }
+#endif // DO_LOG
+
+  for (i = 0; i < server.args(); i++ )
+  {
+#ifdef DO_LOG
+    if ( !beQuiet )
     {
-         Logger.Log(LOGLEVEL_DEBUG, (const char*) "handleIndexPage\n");
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
+    }
+#endif // DO_LOG
+  }
+
+  if ( server.method() == SERVER_METHOD_POST )
+    //        server.hasArg(INDEX_BUTTONNAME_ADMIN)  )
+  {
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "POST REQUEST\n");
+    }
+#endif // DO_LOG
+  }
+  else
+  {
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "GET REQUEST\n");
+    }
+#endif // DO_LOG
+  }
+
+  if ( server.hasArg("submit") && server.arg("submit").equalsIgnoreCase("speichern") )
+
+  {
+    // for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
+    for ( i = 0; i < CONNECTED_RELAIS; i++ )
+    {
+
+      formFieldName[KW_IDX_BEZEICHNER] = String("bezeichner") + String(i+1);
+      formFieldName[KW_IDX_ENABLED_1]  = String("enabled1_")  + String(i+1);
+      formFieldName[KW_IDX_HFROM_1]    = String("hfrom1_")    + String(i+1);
+      formFieldName[KW_IDX_MFROM_1]    = String("mfrom1_")    + String(i+1);
+      formFieldName[KW_IDX_HTO_1]      = String("hto1_")      + String(i+1);
+      formFieldName[KW_IDX_MTO_1]      = String("mto1_")      + String(i+1);
+      formFieldName[KW_IDX_ENABLED_2]  = String("enabled2_")  + String(i+1);
+      formFieldName[KW_IDX_HFROM_2]    = String("hfrom2_")    + String(i+1);
+      formFieldName[KW_IDX_MFROM_2]    = String("mfrom2_")    + String(i+1);
+      formFieldName[KW_IDX_HTO_2]      = String("hto2_")      + String(i+1);
+      formFieldName[KW_IDX_MTO_2]      = String("mto2_")      + String(i+1);
+      formFieldName[KW_IDX_EXT_1]      = String("ext1_")      + String(i+1);
+      formFieldName[KW_IDX_EXT_2]      = String("ext2_")      + String(i+1);
+      formFieldName[KW_IDX_MODE]       = String("mode")       + String(i+1);
+
+
+      tblEntry[i].name         = server.arg(formFieldName[KW_IDX_BEZEICHNER]);
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].name         = server.arg(\"%s\") ->%s\n", 
+                  i, formFieldName[KW_IDX_BEZEICHNER].c_str(), server.arg(formFieldName[KW_IDX_BEZEICHNER]).c_str());
     }
 #endif // DO_LOG
 
-    for(i = 0; i < server.args(); i++ )
-    {
+      tblEntry[i].mode         = server.arg(formFieldName[KW_IDX_MODE]);
+
 #ifdef DO_LOG
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, (const char*) "%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
-        }
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].mode         = server.arg(\"%s\") ->%s\n", 
+                  i, formFieldName[KW_IDX_MODE].c_str(), server.arg(formFieldName[KW_IDX_MODE]).c_str());
+    }
 #endif // DO_LOG
+
+      tblEntry[i].hourFrom_1   = server.arg(formFieldName[KW_IDX_HFROM_1]);
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*)"tblEntry[%d].hourFrom_1    = server.arg(\"%s\") ->%s\n", 
+                  i, formFieldName[KW_IDX_HFROM_1].c_str(), server.arg(formFieldName[KW_IDX_HFROM_1]).c_str());
+    }
+#endif // DO_LOG
+
+      tblEntry[i].minuteFrom_1 = server.arg(formFieldName[KW_IDX_MFROM_1]);
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].minuteFrom_1 = server.arg(\"%s\") ->%s\n", 
+                  i, formFieldName[KW_IDX_MFROM_1].c_str(), server.arg(formFieldName[KW_IDX_MFROM_1]).c_str());
+    }
+#endif // DO_LOG
+
+      tblEntry[i].hourTo_1     = server.arg(formFieldName[KW_IDX_HTO_1]);
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*)"tblEntry[%d].hourTo_1      = server.arg(\"%s\") ->%s\n", 
+                  i, formFieldName[KW_IDX_HTO_1].c_str(), server.arg(formFieldName[KW_IDX_HTO_1]).c_str());
+    }
+#endif // DO_LOG
+
+      tblEntry[i].minuteTo_1   = server.arg(formFieldName[KW_IDX_MTO_1]);
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].minuteTo_1   = server.arg(\"%s\") ->%s\n", 
+                  i, formFieldName[KW_IDX_MTO_1].c_str(), server.arg(formFieldName[KW_IDX_MTO_1]).c_str());
+    }
+#endif // DO_LOG
+
+      tblEntry[i].hourFrom_2   = server.arg(formFieldName[KW_IDX_HFROM_2]);
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].hourFrom_2   = server.arg(\"%s\") ->%s\n", 
+                  i, formFieldName[KW_IDX_HFROM_2].c_str(), server.arg(formFieldName[KW_IDX_HFROM_2]).c_str());
+    }
+#endif // DO_LOG
+
+      tblEntry[i].minuteFrom_2 = server.arg(formFieldName[KW_IDX_MFROM_2]);
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].minuteFrom_2 = server.arg(\"%s\") ->%s\n", 
+                  i, formFieldName[KW_IDX_MFROM_2].c_str(), server.arg(formFieldName[KW_IDX_MFROM_2]).c_str());
+    }
+#endif // DO_LOG
+
+      tblEntry[i].hourTo_2     = server.arg(formFieldName[KW_IDX_HTO_2]);
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].hourTo_2     = server.arg(\"%s\") ->%s\n", 
+                  i, formFieldName[KW_IDX_HTO_2].c_str(), server.arg(formFieldName[KW_IDX_HTO_2]).c_str());
+    }
+#endif // DO_LOG
+
+      tblEntry[i].minuteTo_2   = server.arg(formFieldName[KW_IDX_MTO_2]);
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].minuteTo_2   = server.arg(\"%s\") ->%s\n", 
+                  i, formFieldName[KW_IDX_MTO_2].c_str(), server.arg(formFieldName[KW_IDX_MTO_2]).c_str());
+    }
+#endif // DO_LOG
+
+      tblEntry[i].enabled_1   = server.arg(formFieldName[KW_IDX_ENABLED_1]).equalsIgnoreCase("aktiv") ? true : false;
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].enabled_1   = server.arg(\"%s\") -> %d\n", 
+                  i, formFieldName[KW_IDX_ENABLED_1].c_str(), tblEntry[i].enabled_1);
+    }
+#endif // DO_LOG
+      
+      tblEntry[i].extEnable_1 = server.arg(formFieldName[KW_IDX_EXT_1]).equalsIgnoreCase("aktiv") ? true : false;
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].extEnable_1 = server.arg(\"%s\") -> %d\n", 
+                  i, formFieldName[KW_IDX_EXT_1].c_str(), tblEntry[i].extEnable_1);
+    }
+#endif // DO_LOG
+            
+      tblEntry[i].enabled_2   = server.arg(formFieldName[KW_IDX_ENABLED_2]).equalsIgnoreCase("aktiv") ? true : false;
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].enabled_2   = server.arg(\"%s\") -> %d\n", 
+                  i, formFieldName[KW_IDX_ENABLED_2].c_str(), tblEntry[i].enabled_2);
+    }
+#endif // DO_LOG
+      
+      tblEntry[i].extEnable_2 = server.arg(formFieldName[KW_IDX_EXT_2]).equalsIgnoreCase("aktiv") ? true : false;
+
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].extEnable_2 = server.arg(\"%s\") -> %d\n", 
+                  i, formFieldName[KW_IDX_EXT_2].c_str(), tblEntry[i].extEnable_2);
+    }
+#endif // DO_LOG
+      
+
     }
 
-    if( server.method() == SERVER_METHOD_POST )
-//        server.hasArg(INDEX_BUTTONNAME_ADMIN)  )
-    {
-#ifdef DO_LOG
-        if( !beQuiet )
-        {
-             Logger.Log(LOGLEVEL_DEBUG, (const char*) "POST REQUEST\n");
-        }
-#endif // DO_LOG
-    }
-    else
-    {
-#ifdef DO_LOG
-        if( !beQuiet )
-        {
-             Logger.Log(LOGLEVEL_DEBUG, (const char*) "GET REQUEST\n");
-        }
-#endif // DO_LOG
-    }
+    storeActionTable();
+    eeprom.validate();
 
-    if( server.hasArg("submit") && server.arg("submit").equalsIgnoreCase("speichern") )
-
-    {
-      // for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
-      for( i = 0; i < CONNECTED_RELAIS; i++ )
-      {
-
-        formFieldName[i] = String("bezeichner") + String(i);
-        formFieldName[i] = String("enabled1_")  + String(i);
-        formFieldName[i] = String("hfrom1_")    + String(i);
-        formFieldName[i] = String("mfrom1_")    + String(i);
-        formFieldName[i] = String("hto1_")      + String(i);
-        formFieldName[i] = String("mto1_")      + String(i);
-        formFieldName[i] = String("enabled2_")  + String(i);
-        formFieldName[i] = String("hfrom2_")    + String(i);
-        formFieldName[i] = String("mfrom2_")    + String(i);
-        formFieldName[i] = String("hto2_")      + String(i);
-        formFieldName[i] = String("mto2_")      + String(i);
-        formFieldName[i] = String("ext1_")      + String(i);
-        formFieldName[i] = String("ext2_")      + String(i);
-        formFieldName[i] = String("mode")       + String(i);
-
-        tblEntry[i].name         = server.arg(formFieldName[i]);
-        tblEntry[i].mode         = server.arg(formFieldName[i]);
-        tblEntry[i].hourFrom_1   = server.arg(formFieldName[i]);
-        tblEntry[i].minuteFrom_1 = server.arg(formFieldName[i]);
-        tblEntry[i].hourTo_1     = server.arg(formFieldName[i]);
-        tblEntry[i].minuteTo_1   = server.arg(formFieldName[i]);
-        tblEntry[i].hourFrom_2   = server.arg(formFieldName[i]);
-        tblEntry[i].minuteFrom_2 = server.arg(formFieldName[i]);
-        tblEntry[i].hourTo_2     = server.arg(formFieldName[i]);
-        tblEntry[i].minuteTo_2   = server.arg(formFieldName[i]);
-
-        tblEntry[i].enabled_1   = server.arg(formFieldName[i]).equalsIgnoreCase("aktiv") ? true : false;
-        tblEntry[i].extEnable_1 = server.arg(formFieldName[i]).equalsIgnoreCase("aktiv") ? true : false;
-        tblEntry[i].enabled_2   = server.arg(formFieldName[i]).equalsIgnoreCase("aktiv") ? true : false;
-        tblEntry[i].extEnable_2 = server.arg(formFieldName[i]).equalsIgnoreCase("aktiv") ? true : false;
-
-
-
-#ifdef NOT_COMPACT
-        tblEntry[i].name         = server.arg( _form_keywords_[i][KW_IDX_BEZEICHNER] );
-        tblEntry[i].mode         = server.arg( _form_keywords_[i][KW_IDX_MODE] );
-        tblEntry[i].hourFrom_1   = server.arg( _form_keywords_[i][KW_IDX_HFROM_1] );
-        tblEntry[i].minuteFrom_1 = server.arg( _form_keywords_[i][KW_IDX_MFROM_1] );
-        tblEntry[i].hourTo_1     = server.arg( _form_keywords_[i][KW_IDX_HTO_1] );
-        tblEntry[i].minuteTo_1   = server.arg( _form_keywords_[i][KW_IDX_MTO_1] );
-        tblEntry[i].hourFrom_2   = server.arg( _form_keywords_[i][KW_IDX_HFROM_2] );
-        tblEntry[i].minuteFrom_2 = server.arg( _form_keywords_[i][KW_IDX_MFROM_2] );
-        tblEntry[i].hourTo_2     = server.arg( _form_keywords_[i][KW_IDX_HTO_2] );
-        tblEntry[i].minuteTo_2   = server.arg( _form_keywords_[i][KW_IDX_MTO_2] );
-
-        tblEntry[i].enabled_1   = server.arg( _form_keywords_[i][ KW_IDX_ENABLED_1] ).equalsIgnoreCase("aktiv") ? true : false ;
-        tblEntry[i].extEnable_1 = server.arg( _form_keywords_[i][ KW_IDX_EXT_1] ).equalsIgnoreCase("aktiv") ? true : false;
-        tblEntry[i].enabled_2   = server.arg( _form_keywords_[i][ KW_IDX_EXT_2] ).equalsIgnoreCase("aktiv") ? true : false;
-        tblEntry[i].extEnable_2 = server.arg( _form_keywords_[i][ KW_IDX_ENABLED_2] ).equalsIgnoreCase("aktiv") ? true : false;
-#endif // NOT_COMPACT
-
-      }
-
-      storeActionTable();
-      eeprom.validate();
-
-      startupActions();
-// return;
+    startupActions();
+    // return;
 
   }
 
@@ -2580,58 +2633,58 @@ void setupPage()
   // Zeile 1
   pageContent += "<tr>\n";
   doCreateLine( 1 );
-  pageContent +="</tr>\n";
+  pageContent += "</tr>\n";
 
   // Zeile 2
   pageContent += "<tr>\n";
   doCreateLine( 2 );
-  pageContent +="</tr>\n";
+  pageContent += "</tr>\n";
 
   // Zeile 3
   pageContent += "<tr>\n";
   doCreateLine( 3 );
-  pageContent +="</tr>\n";
+  pageContent += "</tr>\n";
 
   // Zeile 4
   pageContent += "<tr>\n";
   doCreateLine( 4 );
-  pageContent +="</tr>\n";
+  pageContent += "</tr>\n";
 
   // Zeile 5
   pageContent += "<tr>\n";
   doCreateLine( 5 );
-  pageContent +="</tr>\n";
+  pageContent += "</tr>\n";
 
   // Zeile 6
   pageContent += "<tr>\n";
   doCreateLine( 6 );
-  pageContent +="</tr>\n";
+  pageContent += "</tr>\n";
 
   // Zeile 7
   pageContent += "<tr>\n";
   doCreateLine( 7 );
-  pageContent +="</tr>\n";
+  pageContent += "</tr>\n";
 
   // Zeile 8
   pageContent += "<tr>\n";
   doCreateLine( 8 );
-  pageContent +="</tr>\n";
+  pageContent += "</tr>\n";
 
-  pageContent +="</table>\n";
-  pageContent +="<hr align=\"center\">\n";
-  pageContent +="<div align=\"center\">\n";
-  pageContent +="<input type=\"submit\" name=\"submit\" value=\"speichern\">\n";
-  pageContent +="<input type=\"reset\" name=\"reset\" value=\"reset\">\n";
-  pageContent +="<input type=\"submit\" name=\"ESP\" value=\"reboot\">\n";
-  pageContent +="</div>\n";
-  pageContent +="<hr align=\"center\"><br>\n";
-  pageContent +="</form>\n";
-  pageContent +="</body>\n";
-  pageContent +="</html>\n";
+  pageContent += "</table>\n";
+  pageContent += "<hr align=\"center\">\n";
+  pageContent += "<div align=\"center\">\n";
+  pageContent += "<input type=\"submit\" name=\"submit\" value=\"speichern\">\n";
+  pageContent += "<input type=\"reset\" name=\"reset\" value=\"reset\">\n";
+  pageContent += "<input type=\"submit\" name=\"ESP\" value=\"reboot\">\n";
+  pageContent += "</div>\n";
+  pageContent += "<hr align=\"center\"><br>\n";
+  pageContent += "</form>\n";
+  pageContent += "</body>\n";
+  pageContent += "</html>\n";
 
-  server.send(200, "text/html", pageContent); 
+  server.send(200, "text/html", pageContent);
 
-//  Serial.print(pageContent.c_str());
+  //  Serial.print(pageContent.c_str());
 
 }
 
@@ -2646,97 +2699,97 @@ void setupPage()
 void apiPage()
 {
 
-    int i;
-    pageContent = "";
+  int i;
+  pageContent = "";
 
 
-    pageContent += "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">\n";
-    pageContent += "<html>\n";
-    pageContent += "<head>\n";
-    pageContent += "<meta charset=\"utf-8\">\n";
-    pageContent += "<title>Web-API</title>\n";
-    pageContent += "</head>\n";
-    pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\">\n";
+  pageContent += "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">\n";
+  pageContent += "<html>\n";
+  pageContent += "<head>\n";
+  pageContent += "<meta charset=\"utf-8\">\n";
+  pageContent += "<title>Web-API</title>\n";
+  pageContent += "</head>\n";
+  pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\">\n";
 
 #ifdef DO_LOG
-    if( !beQuiet )
-    {
-         Logger.Log(LOGLEVEL_DEBUG, (const char*) "apiPage<br>\n");
-    }
+  if ( !beQuiet )
+  {
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "apiPage<br>\n");
+  }
 #endif // DO_LOG
 
-    pageContent += String("apiPage<br>\n");
+  pageContent += String("apiPage<br>\n");
 
-    for(i = 0; i < server.args(); i++ )
-    {
-        pageContent += server.argName(i) + String("=") + server.arg(i) + String("<br>\n");
+  for (i = 0; i < server.args(); i++ )
+  {
+    pageContent += server.argName(i) + String("=") + server.arg(i) + String("<br>\n");
 #ifdef DO_LOG
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, (const char*) "%s = %s<br>\n", server.argName(i).c_str(), server.arg(i).c_str() );
-        }
-#endif // DO_LOG
-    }
-
-    if( server.method() == SERVER_METHOD_POST )
-//        server.hasArg(INDEX_BUTTONNAME_ADMIN)  )
+    if ( !beQuiet )
     {
-        pageContent += String("POST REQUEST<br>\n");
-#ifdef DO_LOG
-        if( !beQuiet )
-        {
-             Logger.Log(LOGLEVEL_DEBUG, (const char*) "POST REQUEST<br>\n");
-        }
-#endif // DO_LOG
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "%s = %s<br>\n", server.argName(i).c_str(), server.arg(i).c_str() );
     }
-    else
+#endif // DO_LOG
+  }
+
+  if ( server.method() == SERVER_METHOD_POST )
+    //        server.hasArg(INDEX_BUTTONNAME_ADMIN)  )
+  {
+    pageContent += String("POST REQUEST<br>\n");
+#ifdef DO_LOG
+    if ( !beQuiet )
     {
-        pageContent += String("GET REQUEST<br>\n");
-#ifdef DO_LOG
-        if( !beQuiet )
-        {
-             Logger.Log(LOGLEVEL_DEBUG, (const char*) "GET REQUEST<br>\n");
-        }
-#endif // DO_LOG
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "POST REQUEST<br>\n");
     }
+#endif // DO_LOG
+  }
+  else
+  {
+    pageContent += String("GET REQUEST<br>\n");
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "GET REQUEST<br>\n");
+    }
+#endif // DO_LOG
+  }
 
-    pageContent +="</body>\n";
-    pageContent +="</html>\n";
+  pageContent += "</body>\n";
+  pageContent += "</html>\n";
 
-    server.send(200, "text/html", pageContent); 
+  server.send(200, "text/html", pageContent);
 }
 
 /* ************** ++++++++++ ************* +++++++++++++++ */
 
 #ifdef HTTP_CLIENT
 HTTPClient http;
-http.begin("http://192.168.0.104:8080/webappfordemo/Version");  
+http.begin("http://192.168.0.104:8080/webappfordemo/Version");
 int httpCode = http.GET();
-if(httpCode == HTTP_CODE_OK)
+if (httpCode == HTTP_CODE_OK)
 {
-   Serial.print("HTTP response code ");
-   Serial.println(httpCode);
-   String response = http.getString();
-   Serial.println(response);
+  Serial.print("HTTP response code ");
+  Serial.println(httpCode);
+  String response = http.getString();
+  Serial.println(response);
 }
-  
-  // We now create a URI for the request
-  String url = "/stan";
 
-  Serial.print("Requesting URL: ");
-  Serial.println(url);
+// We now create a URI for the request
+String url = "/stan";
 
-  // This will send the request to the server
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-               "Host: " + host + "\r\n" + 
-               "Connection: close\r\n\r\n");
-  delay(10);
+Serial.print("Requesting URL: ");
+Serial.println(url);
 
-  // Read all the lines of the reply from server and print them to Serial
-  Serial.println("Respond:");
-  while(client.available()){
-    String line = client.readStringUntil('\r');
-    Serial.print(line);
-  }
+// This will send the request to the server
+client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+             "Host: " + host + "\r\n" +
+             "Connection: close\r\n\r\n");
+delay(10);
+
+// Read all the lines of the reply from server and print them to Serial
+Serial.println("Respond:");
+while (client.available()) {
+  String line = client.readStringUntil('\r');
+  Serial.print(line);
+}
 #endif // HTTP_CLIENT
-  
+
