@@ -44,7 +44,8 @@ Around line 203 you have to change DEFAULT_UPDATE_URL.
 CAUTION! After flashing the sketch using the Arduino IDE you MUST hard reset the ESP-Module because of update and restart don't work if you don't reset the ESP.
 Now you may copy an .bin-file to the location where DEFAULT_UPDATE_URL points to. It's name has to be "firmware.bin0" ( FIRMWARE_DOT_BIN_NULL ).
 Update starts when a marker file "firnware.0" ( FIRMWARE_DOT_NULL ) is present in the above directory.
-**NOTE: BECAUSE OF SOME SMALL FIXES YOU HAVE TO UPDATE MY EEPROM-LIBRARY. too.**
+
+**NOTE: BECAUSE OF SOME SMALL FIXES YOU HAVE TO UPDATE MY EEPROM-LIBRARY, too.**
 
 
 
