@@ -167,7 +167,7 @@ class dsEeprom {
     short logLevel;
     short status;
     unsigned char magic;
-    unsigned int blockSize;
+    int blockSize;
     unsigned int reSized;
     unsigned long crc32Old;
     unsigned long crc32New;

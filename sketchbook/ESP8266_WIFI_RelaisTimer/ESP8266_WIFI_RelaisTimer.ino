@@ -3,7 +3,7 @@
 // Use an ESP8266 modul as a WiFi switch
 // (C) 2016 Dirk Schanz aka dreamshader
 // ************************************************************************
-//
+// 41148
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
@@ -60,7 +60,7 @@
 //
 // 2016/10/28: initial version 
 // 2016/12/08: added flag handling
-// 2016/12/12: added functions for web-update 
+// 2016/12/12: added functions for web-update
 // 
 //
 // ************************************************************************
@@ -90,8 +90,8 @@ bool beQuiet;
 #include <ESP8266HTTPClient.h>
 #include <ESP8266httpUpdate.h>
 
-#define __ASSERT_USE_STDERR     // 
-#include <assert.h>             // for future use
+// #define __ASSERT_USE_STDERR     // 
+// #include <assert.h>             // for future use
 
 #include "dsEeprom.h"           // simplified access to onchip EEPROM
 #include "SimpleLog.h"          // fprintf()-like logging
@@ -105,8 +105,8 @@ bool beQuiet;
 // your network
 //
 #define DEFAULT_UDP_LISTENPORT		8888
-#define DEFAULT_WLAN_SSID               ""
-#define DEFAULT_WLAN_PASSPHRASE         ""
+#define DEFAULT_WLAN_SSID               "HERE_YOUR_SSID"
+#define DEFAULT_WLAN_PASSPHRASE         "HERE_YOUR_WLAN_PASSPHRASE"
 
 #define DEAULT_NTP_SERVERNAME		"us.pool.ntp.org"
 
@@ -155,33 +155,33 @@ WiFiUDP Udp;
 // setup NTP Server to connect to
 // ************************************************************************
 //
-static String ntpServerName;
-static String ntpServerPort;
+String ntpServerName;
+String ntpServerPort;
 //
 // ************************************************************************
 // setup local SSID
 // ************************************************************************
 //
-static String wlanSSID;
+String wlanSSID;
 //
 // ************************************************************************
 // setup for  online-updates
 // ************************************************************************
 //
-static String updateUrl;
-static String lastRelease;
-static String lastVersion;
-static String lastPatchlevel;
+String updateUrl;
+short lastRelease;
+short lastVersion;
+short lastPatchlevel;
 //
-static String lastNumber;
+short lastNumber;
 //
-static String nextUpdateMonth;
-static String nextUpdateDay;
-static String nextUpdateWeekDay;
-static String nextUpdateHour;
-static String nextUpdateMinute;
-static String updateInterval;
-static String updateMode;
+short nextUpdateMonth;
+short nextUpdateDay;
+short nextUpdateWeekDay;
+short nextUpdateHour;
+short nextUpdateMinute;
+short updateInterval;
+short updateMode;
 //
 #define EEPROM_MAXLEN_UPDATE_URL         45
 #define EEPROM_MAXLEN_LAST_RELEASE        2
@@ -200,24 +200,24 @@ static String updateMode;
 #define EEPROM_MAXLEN_UPDATE_MODE         2
 //
 //
-#define DEFAULT_UPDATE_URL              "http://192.168.1.122/ESP8266/firmware.bin"
-#define DEFAULT_UPDATE_LAST_RELEASE     "0"
-#define DEFAULT_UPDATE_LAST_VERSION     "0"
-#define DEFAULT_UPDATE_LAST_PATCHLEVEL  "0"
-#define DEFAULT_UPDATE_LAST_NUMBER      "0"
-#define DEFAULT_UPDATE_NEXT_MONTH       "0"
-#define DEFAULT_UPDATE_NEXT_DAY         "0"
-#define DEFAULT_UPDATE_NEXT_WEEKDAY     "0"
-#define DEFAULT_UPDATE_NEXT_HOUR        "0"
-#define DEFAULT_UPDATE_NEXT_MINUTE      "0"
-#define DEFAULT_UPDATE_INTERVAL         "0"
-#define DEFAULT_UPDATE_MODE             "0"
+#define DEFAULT_UPDATE_URL              "http://192.168.1.122/ESP8266/"
+#define DEFAULT_UPDATE_LAST_RELEASE     0
+#define DEFAULT_UPDATE_LAST_VERSION     0
+#define DEFAULT_UPDATE_LAST_PATCHLEVEL  0
+#define DEFAULT_UPDATE_LAST_NUMBER      0
+#define DEFAULT_UPDATE_NEXT_MONTH       0
+#define DEFAULT_UPDATE_NEXT_DAY         0
+#define DEFAULT_UPDATE_NEXT_WEEKDAY     0
+#define DEFAULT_UPDATE_NEXT_HOUR        0
+#define DEFAULT_UPDATE_NEXT_MINUTE      0
+#define DEFAULT_UPDATE_INTERVAL         0
+#define DEFAULT_UPDATE_MODE             0
 //
 // ************************************************************************
 // setup passphrase for local WLAN
 // ************************************************************************
 //
-static String wlanPassphrase;
+String wlanPassphrase;
 //
 // ************************************************************************
 // some additional globals holding settings
@@ -250,9 +250,6 @@ dsEeprom eeprom;
 //
 // ------------------------------------------------------------------------
 //
-#if not defined ( EEPROM_EXT_DATA_BEGIN )
-#error "Missing end of standard layout. Please check dsEeprom.h"
-#endif
 
 
 
@@ -265,8 +262,13 @@ dsEeprom eeprom;
 #define EEPROM_POS_NTP_SERVER_PORT       (EEPROM_POS_NTP_SERVER_NAME  + EEPROM_MAXLEN_NTP_SERVER_NAME   + EEPROM_LEADING_LENGTH)
 
 #define EEPROM_ADD_SYS_VARS_END          (EEPROM_POS_NTP_SERVER_PORT  + EEPROM_MAXLEN_NTP_SERVER_PORT + EEPROM_LEADING_LENGTH)
-#define EEPROM_EXT_DATA_BEGIN             EEPROM_ADD_SYS_VARS_END
 
+#ifdef EEPROM_EXT_DATA_BEGIN
+#undef EEPROM_EXT_DATA_BEGIN
+#define EEPROM_EXT_DATA_BEGIN             EEPROM_ADD_SYS_VARS_END
+#else
+#define EEPROM_EXT_DATA_BEGIN             EEPROM_ADD_SYS_VARS_END
+#endif
 
 // known: EEPROM_MAXLEN_BOOLEAN see dsEeprom.h
 
@@ -357,131 +359,133 @@ struct _action_entry {
 
 struct _action_entry tblEntry[MAX_ACTION_TABLE_LINES];
 
+String formFieldName[MAX_ACTION_TABLE_LINES];
 
+#ifdef NOT_COMPACT
 char* _form_keywords_[MAX_ACTION_TABLE_LINES][14] = {
 
-  { "bezeichner1", 
-    "enabled1_1", 
-    "hfrom1_1", 
-    "mfrom1_1", 
-    "hto1_1", 
-    "mto1_1", 
-    "enabled2_1", 
-    "hfrom2_1", 
-    "mfrom2_1", 
-    "hto2_1", 
-    "mto2_1", 
-    "ext1_1", 
-    "ext2_1", 
-    "mode1" },
+  { (char*) "bezeichner1", 
+    (char*) "enabled1_1", 
+    (char*) "hfrom1_1", 
+    (char*) "mfrom1_1", 
+    (char*) "hto1_1", 
+    (char*) "mto1_1", 
+    (char*) "enabled2_1", 
+    (char*) "hfrom2_1", 
+    (char*) "mfrom2_1", 
+    (char*) "hto2_1", 
+    (char*) "mto2_1", 
+    (char*) "ext1_1", 
+    (char*) "ext2_1", 
+    (char*) "mode1" },
 
-  { "bezeichner2", 
-    "enabled1_2", 
-    "hfrom1_2", 
-    "mfrom1_2", 
-    "hto1_2", 
-    "mto1_2", 
-    "enabled2_2", 
-    "hfrom2_2", 
-    "mfrom2_2", 
-    "hto2_2", 
-    "mto2_2", 
-    "ext1_2", 
-    "ext2_2", 
-    "mode2" },
+  { (char*) "bezeichner2", 
+    (char*) "enabled1_2", 
+    (char*) "hfrom1_2", 
+    (char*) "mfrom1_2", 
+    (char*) "hto1_2", 
+    (char*) "mto1_2", 
+    (char*) "enabled2_2", 
+    (char*) "hfrom2_2", 
+    (char*) "mfrom2_2", 
+    (char*) "hto2_2", 
+    (char*) "mto2_2", 
+    (char*) "ext1_2", 
+    (char*) "ext2_2", 
+    (char*) "mode2" },
 
-  { "bezeichner3", 
-    "enabled1_3", 
-    "hfrom1_3", 
-    "mfrom1_3", 
-    "hto1_3", 
-    "mto1_3", 
-    "enabled2_3", 
-    "hfrom2_3", 
-    "mfrom2_3", 
-    "hto2_3", 
-    "mto2_3", 
-    "ext1_3", 
-    "ext2_3", 
-    "mode3" },
+  { (char*) "bezeichner3", 
+    (char*) "enabled1_3", 
+    (char*) "hfrom1_3", 
+    (char*) "mfrom1_3", 
+    (char*) "hto1_3", 
+    (char*) "mto1_3", 
+    (char*) "enabled2_3", 
+    (char*) "hfrom2_3", 
+    (char*) "mfrom2_3", 
+    (char*) "hto2_3", 
+    (char*) "mto2_3", 
+    (char*) "ext1_3", 
+    (char*) "ext2_3", 
+    (char*) "mode3" },
 
-  { "bezeichner4", 
-    "enabled1_4", 
-    "hfrom1_4", 
-    "mfrom1_4", 
-    "hto1_4", 
-    "mto1_4", 
-    "enabled2_4", 
-    "hfrom2_4", 
-    "mfrom2_4", 
-    "hto2_4", 
-    "mto2_4", 
-    "ext1_4", 
-    "ext2_4", 
-    "mode4" },
+  { (char*) "bezeichner4", 
+    (char*) "enabled1_4", 
+    (char*) "hfrom1_4", 
+    (char*) "mfrom1_4", 
+    (char*) "hto1_4", 
+    (char*) "mto1_4", 
+    (char*) "enabled2_4", 
+    (char*) "hfrom2_4", 
+    (char*) "mfrom2_4", 
+    (char*) "hto2_4", 
+    (char*) "mto2_4", 
+    (char*) "ext1_4", 
+    (char*) "ext2_4", 
+    (char*) "mode4" },
 
-  { "bezeichner5", 
-    "enabled1_5", 
-    "hfrom1_5", 
-    "mfrom1_5", 
-    "hto1_5", 
-    "mto1_5", 
-    "enabled2_5", 
-    "hfrom2_5", 
-    "mfrom2_5", 
-    "hto2_5", 
-    "mto2_5", 
-    "ext1_5", 
-    "ext2_5", 
-    "mode5" },
+  { (char*) "bezeichner5", 
+    (char*) "enabled1_5", 
+    (char*) "hfrom1_5", 
+    (char*) "mfrom1_5", 
+    (char*) "hto1_5", 
+    (char*) "mto1_5", 
+    (char*) "enabled2_5", 
+    (char*) "hfrom2_5", 
+    (char*) "mfrom2_5", 
+    (char*) "hto2_5", 
+    (char*) "mto2_5", 
+    (char*) "ext1_5", 
+    (char*) "ext2_5", 
+    (char*) "mode5" },
 
-  { "bezeichner6", 
-    "enabled1_6", 
-    "hfrom1_6", 
-    "mfrom1_6", 
-    "hto1_6", 
-    "mto1_6", 
-    "enabled2_6", 
-    "hfrom2_6", 
-    "mfrom2_6", 
-    "hto2_6", 
-    "mto2_6", 
-    "ext1_6", 
-    "ext2_6", 
-    "mode6" },
+  { (char*) "bezeichner6", 
+    (char*) "enabled1_6", 
+    (char*) "hfrom1_6", 
+    (char*) "mfrom1_6", 
+    (char*) "hto1_6", 
+    (char*) "mto1_6", 
+    (char*) "enabled2_6", 
+    (char*) "hfrom2_6", 
+    (char*) "mfrom2_6", 
+    (char*) "hto2_6", 
+    (char*) "mto2_6", 
+    (char*) "ext1_6", 
+    (char*) "ext2_6", 
+    (char*) "mode6" },
 
-  { "bezeichner7", 
-    "enabled1_7", 
-    "hfrom1_7", 
-    "mfrom1_7", 
-    "hto1_7", 
-    "mto1_7", 
-    "enabled2_7", 
-    "hfrom2_7", 
-    "mfrom2_7", 
-    "hto2_7", 
-    "mto2_7", 
-    "ext1_7", 
-    "ext2_7", 
-    "mode7" },
+  { (char*) "bezeichner7", 
+    (char*) "enabled1_7", 
+    (char*) "hfrom1_7", 
+    (char*) "mfrom1_7", 
+    (char*) "hto1_7", 
+    (char*) "mto1_7", 
+    (char*) "enabled2_7", 
+    (char*) "hfrom2_7", 
+    (char*) "mfrom2_7", 
+    (char*) "hto2_7", 
+    (char*) "mto2_7", 
+    (char*) "ext1_7", 
+    (char*) "ext2_7", 
+    (char*) "mode7" },
 
-  { "bezeichner8", 
-    "enabled1_8", 
-    "hfrom1_8", 
-    "mfrom1_8", 
-    "hto1_8", 
-    "mto1_8", 
-    "enabled2_8", 
-    "hfrom2_8", 
-    "mfrom2_8", 
-    "hto2_8", 
-    "mto2_8", 
-    "ext1_8", 
-    "ext2_8", 
-    "mode8" }
-
+  { (char*) "bezeichner8", 
+    (char*) "enabled1_8", 
+    (char*) "hfrom1_8", 
+    (char*) "mfrom1_8", 
+    (char*) "hto1_8", 
+    (char*) "mto1_8", 
+    (char*) "enabled2_8", 
+    (char*) "hfrom2_8", 
+    (char*) "mfrom2_8", 
+    (char*) "hto2_8", 
+    (char*) "mto2_8", 
+    (char*) "ext1_8", 
+    (char*) "ext2_8", 
+    (char*) "mode8" }
 
 };
+#endif // NOT_COMPACT
 
 
 #define KW_IDX_BEZEICHNER   0
@@ -543,17 +547,17 @@ PCF8574 PCF_38(0x38);  // add switches to lines  (used as input)
 //
 // ------------------------------------------------------------------------
 //
-void __assert(const char *__func, const char *__file, int __lineno, const char *__sexp) 
-{
-    // transmit diagnostic informations through serial link. 
-    Serial.println(__func);
-    Serial.println(__file);
-    Serial.println(__lineno, DEC);
-    Serial.println(__sexp);
-    Serial.flush();
-    // abort program execution.
-    abort();
-}
+// void __assert(const char *__func, const char *__file, int __lineno, const char *__sexp) 
+// {
+//    // transmit diagnostic informations through serial link. 
+//    Serial.println(__func);
+//    Serial.println(__file);
+//    Serial.println(__lineno, DEC);
+//    Serial.println(__sexp);
+//    Serial.flush();
+//    // abort program execution.
+//    abort();
+// }
 //
 // ------------------------------------------------------------------------
 //
@@ -596,26 +600,35 @@ void generateNodename()
 //
 void dumpInfo()
 {
-  Serial.print("WiFi.macAddress .....:");
-  Serial.println(WiFi.macAddress());
-  Serial.print("WiFi.localIP ........:");
-  Serial.println(WiFi.localIP());
-  WiFi.printDiag(Serial);
+  
+#ifdef DO_LOG
 
-  Serial.print("ESP.getFreeHeap .....:");
-  Serial.println(ESP.getFreeHeap());
-  Serial.print("ESP.getChipId .......:");
-  Serial.println(ESP.getChipId());
-  Serial.print("ESP.getFlashChipId ..: ");
-  Serial.println(ESP.getFlashChipId());
-  Serial.print("ESP.getFlashChipSize : ");
-  Serial.println(ESP.getFlashChipSize());
-  Serial.print("ESP.getFlashChipSpeed: ");
-  Serial.println(ESP.getFlashChipSpeed());
-  Serial.print("ESP.getCycleCount ...: ");
-  Serial.println(ESP.getCycleCount());
-  Serial.print("ESP.getVcc ..........: ");
-  Serial.println(ESP.getVcc());
+    if( !beQuiet )
+    {  
+        Serial.print("WiFi.macAddress .....:");
+        Serial.println(WiFi.macAddress());
+        Serial.print("WiFi.localIP ........:");
+        Serial.println(WiFi.localIP());
+        WiFi.printDiag(Serial);
+
+        Serial.print("ESP.getFreeHeap .....:");
+        Serial.println(ESP.getFreeHeap());
+        Serial.print("ESP.getChipId .......:");
+        Serial.println(ESP.getChipId());
+        Serial.print("ESP.getFlashChipId ..: ");
+        Serial.println(ESP.getFlashChipId());
+        Serial.print("ESP.getFlashChipSize : ");
+        Serial.println(ESP.getFlashChipSize());
+        Serial.print("ESP.getFlashChipSpeed: ");
+        Serial.println(ESP.getFlashChipSpeed());
+        Serial.print("ESP.getCycleCount ...: ");
+        Serial.println(ESP.getCycleCount());
+        Serial.print("ESP.getVcc ..........: ");
+        Serial.println(ESP.getVcc());
+    }
+    
+#endif // DO_LOG
+
 }
 //
 // ------------------------------------------------------------------------
@@ -659,18 +672,24 @@ time_t getNtpTime()
   static byte packetBuffer[NTP_PACKET_SIZE];
 
   while (Udp.parsePacket() > 0) ; // discard any previously received packets
-  Logger.Log(LOGLEVEL_DEBUG, "Transmit NTP Request");
+#ifdef DO_LOG
+  Logger.Log(LOGLEVEL_DEBUG, (const char*) "Transmit NTP Request");
+#endif // DO_LOG
   // get a random server from the pool
   WiFi.hostByName(ntpServerName.c_str(), ntpServerIP);
 
-  Logger.Log(LOGLEVEL_DEBUG, "ntpServerName: %s\n", ntpServerName.c_str());
+#ifdef DO_LOG
+  Logger.Log(LOGLEVEL_DEBUG, (const char*) "ntpServerName: %s\n", ntpServerName.c_str());
+#endif // DO_LOG
 
   sendNTPpacket(ntpServerIP, packetBuffer);
   uint32_t beginWait = millis();
   while (millis() - beginWait < 1500) {
     int size = Udp.parsePacket();
     if (size >= NTP_PACKET_SIZE) {
-      Logger.Log(LOGLEVEL_DEBUG, "received NTP response\n");
+#ifdef DO_LOG
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "received NTP response\n");
+#endif // DO_LOG
       Udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
       unsigned long secsSince1900;
       // convert four bytes starting at location 40 to a long integer
@@ -681,7 +700,9 @@ time_t getNtpTime()
       return secsSince1900 - 2208988800UL;
     }
   }
-  Logger.Log(LOGLEVEL_DEBUG, "NO NTP response\n");
+#ifdef DO_LOG
+  Logger.Log(LOGLEVEL_DEBUG, (const char*) "NO NTP response\n");
+#endif // DO_LOG
   return 0; // return 0 if unable to get the time
 }
 //
@@ -728,7 +749,7 @@ void apiPage();
 void setupPage();
 void doCreateLine( int tmRow );
 void doTimeSelect( int tmNum, int tmRow, char* sRow );
-void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, int tmRow, char* sRow, char *sHour, char* sMinute );
+void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, char* sRow, char *sHour, char* sMinute );
 // ------------------------------------------------------------------------
 //
 
@@ -802,10 +823,12 @@ void resetActionFlags( void )
 //    for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
     for( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
     {
+#ifdef DO_LOG
         if( !beQuiet )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "reset action flag for port %d\n", currLine );
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "reset action flag for port %d\n", currLine );
         }
+#endif // DO_LOG
 
         tblEntry[currLine].actionFlag_1 = ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION;
         tblEntry[currLine].actionFlag_2 = ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION;
@@ -824,52 +847,21 @@ void resetActionFlags( void )
 int storeAdminSettings()
 {
     int retVal = 0;
-    unsigned long crcCalc;
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing SSID: %s to [%d]\n", wlanSSID.c_str(), EEPROM_POS_WLAN_SSID );
-    }
 
     eeprom.storeString(  wlanSSID,      EEPROM_MAXLEN_WLAN_SSID,       EEPROM_POS_WLAN_SSID );
     
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing Passphrase: %s to [%d]\n", wlanPassphrase.c_str(), EEPROM_POS_WLAN_PASSPHRASE );
-    }
-
     eeprom.storeString(  wlanPassphrase,    EEPROM_MAXLEN_WLAN_PASSPHRASE, EEPROM_POS_WLAN_PASSPHRASE );
     
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing ServerIP: %s to [%d]\n", wwwServerIP.c_str(), EEPROM_POS_SERVER_IP );
-    }
-
     eeprom.storeString(  wwwServerIP,   EEPROM_MAXLEN_SERVER_IP,       EEPROM_POS_SERVER_IP );
     
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing ServerPort: %s to [%d]\n", wwwServerPort.c_str(),EEPROM_POS_SERVER_PORT );
-    }
-
     eeprom.storeString(  wwwServerPort, EEPROM_MAXLEN_SERVER_PORT,     EEPROM_POS_SERVER_PORT );
     
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing Nodename: %s to [%d]\n", nodeName.c_str(), EEPROM_POS_NODENAME );
-    }
-
     eeprom.storeString(  nodeName,      EEPROM_MAXLEN_NODENAME,        EEPROM_POS_NODENAME );
     
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing adminPasswd: %s to [%d]\n", adminPasswd.c_str() , EEPROM_POS_ADMIN_PASSWORD);
-    }
-
     eeprom.storeString(  adminPasswd,   EEPROM_MAXLEN_ADMIN_PASSWORD,  EEPROM_POS_ADMIN_PASSWORD );
 
     eeprom.validate();
-    
+
     return( retVal );
 
 }
@@ -893,50 +885,15 @@ int restoreAdminSettings()
 
         eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
         
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "restored crc: %x calc crc: %x\n", crcRead, crcCalc);
-        }
-        
 
         if( (crcCalc == crcRead) )
         {
             eeprom.restoreString(  wlanSSID,    EEPROM_POS_WLAN_SSID,       EEPROM_MAXLEN_WLAN_SSID );
-            if( !beQuiet )
-            {
-                Logger.Log(LOGLEVEL_DEBUG, "restored SSID: %s\n", wlanSSID.c_str());
-            }
-
             eeprom.restoreString(  wlanPassphrase,  EEPROM_POS_WLAN_PASSPHRASE, EEPROM_MAXLEN_WLAN_PASSPHRASE );
-            if( !beQuiet )
-            {
-                Logger.Log(LOGLEVEL_DEBUG, "restored Passphrase: %s\n", wlanPassphrase.c_str());
-            }
-
             eeprom.restoreString(  wwwServerIP, EEPROM_POS_SERVER_IP,       EEPROM_MAXLEN_SERVER_IP );
-            if( !beQuiet )
-            {
-                Logger.Log(LOGLEVEL_DEBUG, "restored ServerIP: %s\n", wwwServerIP.c_str());
-            }
-
             eeprom.restoreString(  wwwServerPort, EEPROM_POS_SERVER_PORT,     EEPROM_MAXLEN_SERVER_PORT );
-            if( !beQuiet )
-            {
-                Logger.Log(LOGLEVEL_DEBUG, "restored ServerPort: %s\n", wwwServerPort.c_str());
-            }
-
             eeprom.restoreString(  nodeName,    EEPROM_POS_NODENAME,        EEPROM_MAXLEN_NODENAME );
-            if( !beQuiet )
-            {
-                Logger.Log(LOGLEVEL_DEBUG, "restored Nodename: %s\n", nodeName.c_str());
-            }
-
             eeprom.restoreString(  adminPasswd, EEPROM_POS_ADMIN_PASSWORD,  EEPROM_MAXLEN_ADMIN_PASSWORD );
-            if( !beQuiet )
-            {
-                Logger.Log(LOGLEVEL_DEBUG, "restored adminPasswd: %s\n", adminPasswd.c_str());
-            }
-
             retVal = E_SUCCESS;
         }
         else
@@ -964,19 +921,10 @@ int storeAddSysvars()
 {
     int retVal = 0;
 
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing NTP-Server: %s to [%d]\n", ntpServerName.c_str(), EEPROM_POS_NTP_SERVER_NAME );
-    }
-
     eeprom.storeString(  ntpServerName,      EEPROM_MAXLEN_NTP_SERVER_NAME,       EEPROM_POS_NTP_SERVER_NAME );
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing NTP-Server port: %s to [%d]\n", ntpServerPort.c_str(), EEPROM_POS_NTP_SERVER_PORT );
-    }
-
     eeprom.storeString(  ntpServerPort,      EEPROM_MAXLEN_NTP_SERVER_PORT,       EEPROM_POS_NTP_SERVER_PORT );
  
+
     return( retVal );
 }
    
@@ -992,17 +940,9 @@ int restoreAddSysvars()
     int retVal = 0;
 
     eeprom.restoreString(  ntpServerName,    EEPROM_POS_NTP_SERVER_NAME,       EEPROM_MAXLEN_NTP_SERVER_NAME );
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored NTP-Server: %s\n", ntpServerName.c_str());
-    }
-
     eeprom.restoreString(  ntpServerPort,    EEPROM_POS_NTP_SERVER_PORT,       EEPROM_MAXLEN_NTP_SERVER_PORT );
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored NTP-Port: %s\n", ntpServerPort.c_str());
-    }
 
+    eeprom.validate();
 
     return( retVal );
 }
@@ -1016,126 +956,55 @@ int restoreAddSysvars()
 int storeActionTable()
 {
     int retVal = 0;
-    unsigned long crcCalc;
     int currLine;
 
 
-    for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
+    // for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
+    for( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
     {
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "name ........: %s[%d]\n", tblEntry[currLine].name.c_str(),
-                        EEPROM_POS_TBL_ROW_NAME + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeString(tblEntry[currLine].name, EEPROM_MAXLEN_TBL_ROW_NAME, 
                            EEPROM_POS_TBL_ROW_NAME +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "mode ........: %s[%d]\n", tblEntry[currLine].mode.c_str(),
-                        EEPROM_POS_TBL_ROW_MODE + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeString(tblEntry[currLine].mode, EEPROM_MAXLEN_TBL_ROW_MODE, 
                            EEPROM_POS_TBL_ROW_MODE+
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "enabled_1 ...: %d[%d]\n", tblEntry[currLine].enabled_1,
-                        EEPROM_POS_TBL_ENABLED1 + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeBoolean((char*)&tblEntry[currLine].enabled_1, EEPROM_POS_TBL_ENABLED1 +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "hourFrom_1 ..: %s[%d]\n", tblEntry[currLine].hourFrom_1.c_str(),
-                        EEPROM_POS_TBL_HR1_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeString(tblEntry[currLine].hourFrom_1, EEPROM_MAXLEN_TBL_HR_FROM, 
                            EEPROM_POS_TBL_HR1_FROM +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "minuteFrom_1 : %s[%d]\n", tblEntry[currLine].minuteFrom_1.c_str(),
-                        EEPROM_POS_TBL_MIN1_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeString(tblEntry[currLine].minuteFrom_1, EEPROM_MAXLEN_TBL_MIN_FROM, 
                            EEPROM_POS_TBL_MIN1_FROM +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "hourTo_1 ....: %s[%d]\n", tblEntry[currLine].hourTo_1.c_str(),
-                        EEPROM_POS_TBL_HR1_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeString(tblEntry[currLine].hourTo_1, EEPROM_MAXLEN_TBL_HR_TO, 
                            EEPROM_POS_TBL_HR1_TO +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "minuteTo_1 ..: %s[%d]\n", tblEntry[currLine].minuteTo_1.c_str(),
-                        EEPROM_POS_TBL_MIN1_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeString(tblEntry[currLine].minuteTo_1, EEPROM_MAXLEN_TBL_MIN_TO, 
                            EEPROM_POS_TBL_MIN1_TO +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "extEnable_1 .: %d[%d]\n", tblEntry[currLine].extEnable_1,
-                        EEPROM_POS_TBL_EXT1_ENABLED + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeBoolean((char*)&tblEntry[currLine].extEnable_1, EEPROM_POS_TBL_EXT1_ENABLED +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "enabled_2 ...: %d[%d]\n", tblEntry[currLine].enabled_2,
-                        EEPROM_POS_TBL_ENABLED2 + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeBoolean((char*)&tblEntry[currLine].enabled_2, EEPROM_POS_TBL_ENABLED2 +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "hourFrom_2 ..: %s[%d]\n", tblEntry[currLine].hourFrom_2.c_str(),
-                        EEPROM_POS_TBL_HR2_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeString(tblEntry[currLine].hourFrom_2, EEPROM_MAXLEN_TBL_HR_FROM, 
                            EEPROM_POS_TBL_HR2_FROM +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "minuteFrom_2 : %s[%d]\n", tblEntry[currLine].minuteFrom_2.c_str(),
-                        EEPROM_POS_TBL_MIN2_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeString(tblEntry[currLine].minuteFrom_2, EEPROM_MAXLEN_TBL_MIN_FROM, 
                            EEPROM_POS_TBL_MIN2_FROM +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "hourTo_2 ....: %s[%d]\n", tblEntry[currLine].hourTo_2.c_str(),
-                        EEPROM_POS_TBL_HR2_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeString(tblEntry[currLine].hourTo_2, EEPROM_MAXLEN_TBL_HR_TO, 
                            EEPROM_POS_TBL_HR2_TO +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "minuteTo_2 ..: %s[%d]\n", tblEntry[currLine].minuteTo_2.c_str(),
-                        EEPROM_POS_TBL_MIN2_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-        }
         eeprom.storeString(tblEntry[currLine].minuteTo_2, EEPROM_MAXLEN_TBL_MIN_TO, 
                            EEPROM_POS_TBL_MIN2_TO +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
 
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "extEnable_2 .: %d[%d]\n", tblEntry[currLine].extEnable_2,
-                        EEPROM_POS_TBL_EXT2_ENABLED + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-
-        }
         eeprom.storeBoolean((char*)&tblEntry[currLine].extEnable_2, EEPROM_POS_TBL_EXT2_ENABLED +
                            (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
     }
@@ -1166,123 +1035,50 @@ int restoreActionTable()
 
         eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
         
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "restored crc: %x calc crc: %x\n", crcRead, crcCalc);
-        }
-
-        if( (crcCalc == crcRead) )
+        if( crcCalc == crcRead )
         {
 
-            for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
+            // for( currLine = 0; currLine < MAX_ACTION_TABLE_LINES; currLine++ )
+            for( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
             {
                 eeprom.restoreString(tblEntry[currLine].name, 
                                      EEPROM_POS_TBL_ROW_NAME + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
                                      EEPROM_MAXLEN_TBL_ROW_NAME );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "name ........: %s\n", tblEntry[currLine].name.c_str() );
-                }
-//
                 eeprom.restoreString(tblEntry[currLine].mode,
                                      EEPROM_POS_TBL_ROW_MODE + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
                                      EEPROM_MAXLEN_TBL_ROW_MODE );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "mode ........: %s\n", tblEntry[currLine].mode.c_str() );
-                }
-//
                 eeprom.restoreBoolean((char*)&tblEntry[currLine].enabled_1, EEPROM_POS_TBL_ENABLED1 +
                                    (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "enabled_1 ...: %d\n", tblEntry[currLine].enabled_1 );
-                }
-//
                 eeprom.restoreString(tblEntry[currLine].hourFrom_1, 
                                      EEPROM_POS_TBL_HR1_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
                                      EEPROM_MAXLEN_TBL_HR_FROM );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "hourFrom_1 ..: %s\n", tblEntry[currLine].hourFrom_1.c_str() );
-                }
-//
                 eeprom.restoreString(tblEntry[currLine].minuteFrom_1, 
                                      EEPROM_POS_TBL_MIN1_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
                                      EEPROM_MAXLEN_TBL_MIN_FROM );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "minuteFrom_1 : %s\n", tblEntry[currLine].minuteFrom_1.c_str() );
-                }
-//
                 eeprom.restoreString(tblEntry[currLine].hourTo_1, 
                                      EEPROM_POS_TBL_HR1_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
                                      EEPROM_MAXLEN_TBL_HR_TO );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "hourTo_1 ....: %s\n", tblEntry[currLine].hourTo_1.c_str() );
-                }
-//
                 eeprom.restoreString(tblEntry[currLine].minuteTo_1, 
                                      EEPROM_POS_TBL_MIN1_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
                                      EEPROM_MAXLEN_TBL_MIN_TO );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "minuteTo_1 ..: %s\n", tblEntry[currLine].minuteTo_1.c_str() );
-                }
-//
                 eeprom.restoreBoolean((char*)&tblEntry[currLine].extEnable_1, EEPROM_POS_TBL_EXT1_ENABLED +
                                    (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "extEnable_1 .: %d\n", tblEntry[currLine].extEnable_1 );
-                }
-//
                 eeprom.restoreBoolean((char*)&tblEntry[currLine].enabled_2, EEPROM_POS_TBL_ENABLED2 +
                                      (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "enabled_2 ...: %d\n", tblEntry[currLine].enabled_2 );
-                }
-//
                 eeprom.restoreString(tblEntry[currLine].hourFrom_2, 
                                      EEPROM_POS_TBL_HR2_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
                                      EEPROM_MAXLEN_TBL_HR_FROM );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "hourFrom_2 ..: %s\n", tblEntry[currLine].hourFrom_2.c_str() );
-                }
-//
                 eeprom.restoreString(tblEntry[currLine].minuteFrom_2, 
                                      EEPROM_POS_TBL_MIN2_FROM + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
                                      EEPROM_MAXLEN_TBL_MIN_FROM );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "minuteFrom_2 : %s\n", tblEntry[currLine].minuteFrom_2.c_str() );
-                }
-//
                 eeprom.restoreString(tblEntry[currLine].hourTo_2, 
                                      EEPROM_POS_TBL_HR2_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
                                      EEPROM_MAXLEN_TBL_HR_TO );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "hourTo_2 ....: %s\n", tblEntry[currLine].hourTo_2.c_str() );
-                }
-//
                 eeprom.restoreString(tblEntry[currLine].minuteTo_2, 
                                      EEPROM_POS_TBL_MIN2_TO + (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH), 
                                      EEPROM_MAXLEN_TBL_MIN_TO );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "minuteTo_2 ..: %s\n", tblEntry[currLine].minuteTo_2.c_str() );
-                }
-//
                 eeprom.restoreBoolean((char*)&tblEntry[currLine].extEnable_2, EEPROM_POS_TBL_EXT2_ENABLED +
                                    (currLine * EEPROM_ACTION_TBL_ENTRY_LENGTH) );
-                if( !beQuiet )
-                {
-                    Logger.Log(LOGLEVEL_DEBUG, "extEnable_2 .: %d\n", tblEntry[currLine].extEnable_2 );
-                }
             }
         }
         else
@@ -1310,77 +1106,18 @@ int storeUpdateInfo()
 {
     int retVal = 0;
 
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing Update-URL: %s to [%d]\n", updateUrl.c_str(), EEPROM_POS_UPDATE_URL);
-    }
-    eeprom.storeString( updateUrl,         EEPROM_MAXLEN_UPDATE_URL,           EEPROM_POS_UPDATE_URL);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing last release: %s to [%d]\n", lastRelease.c_str(), EEPROM_POS_LAST_RELEASE);
-    }
-    eeprom.storeString( lastRelease,       EEPROM_MAXLEN_LAST_RELEASE,         EEPROM_POS_LAST_RELEASE);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing last version: %s to [%d]\n", lastVersion.c_str(), EEPROM_POS_LAST_VERSION);
-    }
-    eeprom.storeString( lastVersion,       EEPROM_MAXLEN_LAST_VERSION,         EEPROM_POS_LAST_VERSION);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing last patchlevel: %s to [%d]\n", lastPatchlevel.c_str(), EEPROM_POS_LAST_PATCHLEVEL);
-    }
-    eeprom.storeString( lastPatchlevel,    EEPROM_MAXLEN_LAST_PATCHLEVEL,      EEPROM_POS_LAST_PATCHLEVEL);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing last number: %s to [%d]\n", lastNumber.c_str(), EEPROM_POS_LAST_NUMBER);
-    }
-    eeprom.storeString( lastNumber,        EEPROM_MAXLEN_LAST_NUMBER,          EEPROM_POS_LAST_NUMBER);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing next update month: %s to [%d]\n", nextUpdateMonth.c_str(), EEPROM_POS_NEXT_UPDATE_MONTH);
-    }
-    eeprom.storeString( nextUpdateMonth,   EEPROM_MAXLEN_NEXT_UPDATE_MONTH,    EEPROM_POS_NEXT_UPDATE_MONTH);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing next update day: %s to [%d]\n", nextUpdateDay.c_str(), EEPROM_POS_NEXT_UPDATE_DAY);
-    }
-    eeprom.storeString( nextUpdateDay,     EEPROM_MAXLEN_NEXT_UPDATE_DAY,      EEPROM_POS_NEXT_UPDATE_DAY);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing next update meekday: %s to [%d]\n", nextUpdateWeekDay.c_str(), EEPROM_POS_NEXT_UPDATE_WEEKDAY);
-    }
-    eeprom.storeString( nextUpdateWeekDay, EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY,  EEPROM_POS_NEXT_UPDATE_WEEKDAY);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing next update hour: %s to [%d]\n", nextUpdateHour.c_str(), EEPROM_POS_NEXT_UPDATE_HOUR);
-    }
-    eeprom.storeString( nextUpdateHour,    EEPROM_MAXLEN_NEXT_UPDATE_HOUR,     EEPROM_POS_NEXT_UPDATE_HOUR);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing next update minute: %s to [%d]\n", nextUpdateMinute.c_str(), EEPROM_POS_NEXT_UPDATE_MINUTE);
-    }
-    eeprom.storeString( nextUpdateMinute,  EEPROM_MAXLEN_NEXT_UPDATE_MINUTE,   EEPROM_POS_NEXT_UPDATE_MINUTE);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing update interval: %s to [%d]\n", updateInterval.c_str(), EEPROM_POS_UPDATE_INTERVAL);
-    }
-    eeprom.storeString( updateInterval,    EEPROM_MAXLEN_UPDATE_INTERVAL,      EEPROM_POS_UPDATE_INTERVAL);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "storing uopdate mode: %s to [%d]\n", updateMode.c_str(), EEPROM_POS_UPDATE_MODE);
-    }
-    eeprom.storeString( updateMode,        EEPROM_MAXLEN_UPDATE_MODE,          EEPROM_POS_UPDATE_MODE);
+    eeprom.storeString( updateUrl,               EEPROM_MAXLEN_UPDATE_URL,           EEPROM_POS_UPDATE_URL);
+    eeprom.storeRaw( (char*) &lastRelease,       EEPROM_MAXLEN_LAST_RELEASE,         EEPROM_POS_LAST_RELEASE);
+    eeprom.storeRaw( (char*) &lastVersion,       EEPROM_MAXLEN_LAST_VERSION,         EEPROM_POS_LAST_VERSION);
+    eeprom.storeRaw( (char*) &lastPatchlevel,    EEPROM_MAXLEN_LAST_PATCHLEVEL,      EEPROM_POS_LAST_PATCHLEVEL);
+    eeprom.storeRaw( (char*) &lastNumber,        EEPROM_MAXLEN_LAST_NUMBER,          EEPROM_POS_LAST_NUMBER);
+    eeprom.storeRaw( (char*) &nextUpdateMonth,   EEPROM_MAXLEN_NEXT_UPDATE_MONTH,    EEPROM_POS_NEXT_UPDATE_MONTH);
+    eeprom.storeRaw( (char*) &nextUpdateDay,     EEPROM_MAXLEN_NEXT_UPDATE_DAY,      EEPROM_POS_NEXT_UPDATE_DAY);
+    eeprom.storeRaw( (char*) &nextUpdateWeekDay, EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY,  EEPROM_POS_NEXT_UPDATE_WEEKDAY);
+    eeprom.storeRaw( (char*) &nextUpdateHour,    EEPROM_MAXLEN_NEXT_UPDATE_HOUR,     EEPROM_POS_NEXT_UPDATE_HOUR);
+    eeprom.storeRaw( (char*) &nextUpdateMinute,  EEPROM_MAXLEN_NEXT_UPDATE_MINUTE,   EEPROM_POS_NEXT_UPDATE_MINUTE);
+    eeprom.storeRaw( (char*) &updateInterval,    EEPROM_MAXLEN_UPDATE_INTERVAL,      EEPROM_POS_UPDATE_INTERVAL);
+    eeprom.storeRaw( (char*) &updateMode,        EEPROM_MAXLEN_UPDATE_MODE,          EEPROM_POS_UPDATE_MODE);
 
     eeprom.validate();
     
@@ -1399,78 +1136,18 @@ int restoreUpdateInfo()
 {
     int retVal = 0;
 
-    eeprom.restoreString( updateUrl,         EEPROM_POS_UPDATE_URL,           EEPROM_MAXLEN_UPDATE_URL);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored update URL: %s\n", updateUrl.c_str());
-    }
-
-    eeprom.restoreString( lastRelease,       EEPROM_POS_LAST_RELEASE,         EEPROM_MAXLEN_LAST_RELEASE);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored last release: %s\n", lastRelease.c_str());
-    }
-
-    eeprom.restoreString( lastVersion,       EEPROM_POS_LAST_VERSION,         EEPROM_MAXLEN_LAST_VERSION);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored last version: %s\n", lastVersion.c_str());
-    }
-
-    eeprom.restoreString( lastPatchlevel,    EEPROM_POS_LAST_PATCHLEVEL,      EEPROM_MAXLEN_LAST_PATCHLEVEL);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored last patchlevel: %s\n", lastPatchlevel.c_str());
-    }
-
-    eeprom.restoreString( lastNumber,        EEPROM_POS_LAST_NUMBER,          EEPROM_MAXLEN_LAST_NUMBER);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored last number: %s\n", lastNumber.c_str());
-    }
-
-    eeprom.restoreString( nextUpdateMonth,   EEPROM_POS_NEXT_UPDATE_MONTH,    EEPROM_MAXLEN_NEXT_UPDATE_MONTH);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored next update month: %s\n", nextUpdateMonth.c_str());
-    }
-
-    eeprom.restoreString( nextUpdateDay,     EEPROM_POS_NEXT_UPDATE_DAY,      EEPROM_MAXLEN_NEXT_UPDATE_DAY);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored next update day: %s\n", nextUpdateDay.c_str());
-    }
-
-    eeprom.restoreString( nextUpdateWeekDay, EEPROM_POS_NEXT_UPDATE_WEEKDAY,  EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored next update weekday: %s\n", nextUpdateWeekDay.c_str());
-    }
-
-    eeprom.restoreString( nextUpdateHour,    EEPROM_POS_NEXT_UPDATE_HOUR,     EEPROM_MAXLEN_NEXT_UPDATE_HOUR);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored next update hour: %s\n", nextUpdateHour.c_str());
-    }
-
-    eeprom.restoreString( nextUpdateMinute,  EEPROM_POS_NEXT_UPDATE_MINUTE,   EEPROM_MAXLEN_NEXT_UPDATE_MINUTE);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored next update minute: %s\n", nextUpdateMinute.c_str());
-    }
-
-    eeprom.restoreString( updateInterval,    EEPROM_POS_UPDATE_INTERVAL,      EEPROM_MAXLEN_UPDATE_INTERVAL);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored update interval: %s\n", updateInterval.c_str());
-    }
-
-    eeprom.restoreString( updateMode,        EEPROM_POS_UPDATE_MODE,          EEPROM_MAXLEN_UPDATE_MODE);
-    if( !beQuiet )
-    {
-            Logger.Log(LOGLEVEL_DEBUG, "restored update mode: %s\n", updateMode.c_str());
-    }
-
+    eeprom.restoreString( updateUrl,               EEPROM_POS_UPDATE_URL,           EEPROM_MAXLEN_UPDATE_URL);
+    eeprom.restoreRaw( (char*) &lastRelease,       EEPROM_POS_LAST_RELEASE,         EEPROM_MAXLEN_LAST_RELEASE,        EEPROM_MAXLEN_LAST_RELEASE);
+    eeprom.restoreRaw( (char*) &lastVersion,       EEPROM_POS_LAST_VERSION,         EEPROM_MAXLEN_LAST_VERSION,        EEPROM_MAXLEN_LAST_VERSION);
+    eeprom.restoreRaw( (char*) &lastPatchlevel,    EEPROM_POS_LAST_PATCHLEVEL,      EEPROM_MAXLEN_LAST_PATCHLEVEL,     EEPROM_MAXLEN_LAST_PATCHLEVEL);
+    eeprom.restoreRaw( (char*) &lastNumber,        EEPROM_POS_LAST_NUMBER,          EEPROM_MAXLEN_LAST_NUMBER,         EEPROM_MAXLEN_LAST_NUMBER);
+    eeprom.restoreRaw( (char*) &nextUpdateMonth,   EEPROM_POS_NEXT_UPDATE_MONTH,    EEPROM_MAXLEN_NEXT_UPDATE_MONTH,   EEPROM_MAXLEN_NEXT_UPDATE_MONTH);
+    eeprom.restoreRaw( (char*) &nextUpdateDay,     EEPROM_POS_NEXT_UPDATE_DAY,      EEPROM_MAXLEN_NEXT_UPDATE_DAY,     EEPROM_MAXLEN_NEXT_UPDATE_DAY);
+    eeprom.restoreRaw( (char*) &nextUpdateWeekDay, EEPROM_POS_NEXT_UPDATE_WEEKDAY,  EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY, EEPROM_MAXLEN_NEXT_UPDATE_WEEKDAY);
+    eeprom.restoreRaw( (char*) &nextUpdateHour,    EEPROM_POS_NEXT_UPDATE_HOUR,     EEPROM_MAXLEN_NEXT_UPDATE_HOUR,    EEPROM_MAXLEN_NEXT_UPDATE_HOUR);
+    eeprom.restoreRaw( (char*) &nextUpdateMinute,  EEPROM_POS_NEXT_UPDATE_MINUTE,   EEPROM_MAXLEN_NEXT_UPDATE_MINUTE,  EEPROM_MAXLEN_NEXT_UPDATE_MINUTE);
+    eeprom.restoreRaw( (char*) &updateInterval,    EEPROM_POS_UPDATE_INTERVAL,      EEPROM_MAXLEN_UPDATE_INTERVAL,     EEPROM_MAXLEN_UPDATE_INTERVAL);
+    eeprom.restoreRaw( (char*) &updateMode,        EEPROM_POS_UPDATE_MODE,          EEPROM_MAXLEN_UPDATE_MODE,         EEPROM_MAXLEN_UPDATE_MODE);
 
     return( retVal );
 }
@@ -1559,20 +1236,24 @@ void startupActions( void )
   secsSinceEpoch = CE.toLocal(utc, &tcr);
   nowMinutes = ( hour(secsSinceEpoch) * 60 ) + minute(secsSinceEpoch);
 
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "nowMinutes is %d\n", nowMinutes );
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "nowMinutes is %d\n", nowMinutes );
   }
+#endif // DO_LOG
 
   for( i = 0; i < CONNECTED_RELAIS; i++ )
   {
     tblEntry[i].actionFlag_1 = (ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION);
     tblEntry[i].actionFlag_2 = (ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION);
  
+#ifdef DO_LOG
     if( !beQuiet )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "setting port %d to LOW!\n", i );
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "setting port %d to LOW!\n", i );
     }
+#endif // DO_LOG
    
     switchRelais(i, RELAIS_OFF);
 
@@ -1589,10 +1270,12 @@ void startupActions( void )
         {
           // time wrap
           wrapMinutes = (23 * 60) + 59;
+#ifdef DO_LOG
           if( !beQuiet )
           {
-            Logger.Log(LOGLEVEL_DEBUG, "wrap minutes time 1: %d\n", wrapMinutes);
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "wrap minutes time 1: %d\n", wrapMinutes);
           }
+#endif // DO_LOG
 
           if( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
           {
@@ -1600,13 +1283,15 @@ void startupActions( void )
             if( nowMinutes > chkMinutesFrom )
             {
               // set this entry to active
+#ifdef DO_LOG
               if( !beQuiet )
               {
                 Logger.Log(LOGLEVEL_DEBUG, 
-                  "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
+                  (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
                   nowMinutes, chkMinutesFrom, chkMinutesTo );
-                Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
+                Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
               }
+#endif // DO_LOG
 
               tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
               switchRelais(i, RELAIS_ON);
@@ -1617,13 +1302,15 @@ void startupActions( void )
         {
           if( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
           {
+#ifdef DO_LOG
             if( !beQuiet )
             {
               Logger.Log(LOGLEVEL_DEBUG, 
-                "Current time(%d) is after Begin(%d) but before End(%d) of time 1 ... starting action\n",
+                (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 1 ... starting action\n",
                 nowMinutes, chkMinutesFrom, chkMinutesTo );
-              Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
+              Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
             }
+#endif // DO_LOG
 
             tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_ON);
@@ -1656,10 +1343,12 @@ void startupActions( void )
         {
           // time wrap
           wrapMinutes = (23 * 60) + 59;
+#ifdef DO_LOG
           if( !beQuiet )
           {
-            Logger.Log(LOGLEVEL_DEBUG, "wrap minutes time 2: %d\n", wrapMinutes);
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "wrap minutes time 2: %d\n", wrapMinutes);
           }
+#endif // DO_LOG
 
           if( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
           {
@@ -1667,13 +1356,15 @@ void startupActions( void )
             if( nowMinutes > chkMinutesFrom )
             {
               // set this entry to active
+#ifdef DO_LOG
               if( !beQuiet )
               {
                 Logger.Log(LOGLEVEL_DEBUG, 
-                  "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
+                  (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
                   nowMinutes, chkMinutesFrom, chkMinutesTo );
-                Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
+                Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
               }
+#endif // DO_LOG
 
               tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
               switchRelais(i, RELAIS_ON);
@@ -1684,14 +1375,16 @@ void startupActions( void )
         {
           if( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
           {
+#ifdef DO_LOG
             if( !beQuiet )
             {
               Logger.Log(LOGLEVEL_DEBUG, 
-                "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
+                (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
                 nowMinutes, chkMinutesFrom, chkMinutesTo );
  
-              Logger.Log(LOGLEVEL_DEBUG, "switch port %d back to HIGH!\n", i );
+              Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
             }
+#endif // DO_LOG
 
             tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_ON);
@@ -1725,11 +1418,13 @@ void startupActions( void )
 // ************************************************************************
 //
 #define FIRMWARE_CHECK   "0.0.1"
+#define AUTO_RECONNECT_SECONDS   120
 void setup()
 {
 
   unsigned long crcCalc;
   unsigned long crcRead;
+  unsigned long lastMillis;
 
   // witty pins for integrated RGB LED
   const int RED = 15;
@@ -1752,11 +1447,12 @@ void setup()
 
   Logger.Init(LOGLEVEL_DEBUG, &Serial);
 
-Logger.Log(LOGLEVEL_DEBUG,"EEPROM_ACTION_TBL_ENTRY_START = %d\n", EEPROM_ACTION_TBL_ENTRY_START );
-Logger.Log(LOGLEVEL_DEBUG,"EEPROM_ACTION_TBL_ENTRY_LENGTH = %d\n", EEPROM_ACTION_TBL_ENTRY_LENGTH );
-Logger.Log(LOGLEVEL_DEBUG,"EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
-
-Logger.Log(LOGLEVEL_DEBUG,"Current firmware is = %s\n", FIRMWARE_CHECK );
+#ifdef DO_LOG
+Logger.Log(LOGLEVEL_DEBUG,(const char*) "EEPROM_ACTION_TBL_ENTRY_START = %d\n", EEPROM_ACTION_TBL_ENTRY_START );
+Logger.Log(LOGLEVEL_DEBUG,(const char*) "EEPROM_ACTION_TBL_ENTRY_LENGTH = %d\n", EEPROM_ACTION_TBL_ENTRY_LENGTH );
+Logger.Log(LOGLEVEL_DEBUG,(const char*) "EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
+Logger.Log(LOGLEVEL_DEBUG,(const char*) "Current firmware is = %s\n", FIRMWARE_CHECK );
+#endif // DO_LOG
 
 #ifdef ESP_HAS_PCF8574
   Wire.begin(default_sda_pin,default_scl_pin);
@@ -1766,39 +1462,46 @@ Logger.Log(LOGLEVEL_DEBUG,"Current firmware is = %s\n", FIRMWARE_CHECK );
 
 
   resetAdminSettings2Default();
+  resetUpdateInfo2Default();
+
   resetActionFlags();
 
-  if( eeprom.init( 1024, eeprom.version2Magic(), LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )  
-//  if( eeprom.init( 1024, 0x00, LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )  
+  if( eeprom.init( EEPROM_EXT_DATA_END, eeprom.version2Magic(), LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )  
+//  if( eeprom.init( EEPROM_EXT_DATA_END, 0x00, LOGLEVEL_QUIET ) < EE_STATUS_INVALID_CRC )  
   {
     if( eeprom.isValid() )
     {
       analogWrite(GREEN, 0);
       analogWrite(BLUE, 127);
       
-      Logger.Log(LOGLEVEL_DEBUG,"eeprom content is valid!\n");
+#ifdef DO_LOG
+      Logger.Log(LOGLEVEL_DEBUG,(const char*) "eeprom content is valid!\n");
+#endif // DO_LOG
 
       crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
 
       eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
         
+#ifdef DO_LOG
       if( !beQuiet )
       {
-          Logger.Log(LOGLEVEL_DEBUG, "restored crc: %x calc crc: %x\n", crcRead, crcCalc);
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "restored crc: %x calc crc: %x\n", crcRead, crcCalc);
       }
-        
+#endif // DO_LOG
+
       if( (crcCalc == crcRead) )
       {
+#ifdef DO_LOG
         if( !beQuiet )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "crc MATCH!\n" );
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "crc MATCH!\n" );
         }
+#endif // DO_LOG
 
         analogWrite(RED, 0 );
         analogWrite(GREEN, 127);
         analogWrite(BLUE, 0);
       
-        Logger.Log(LOGLEVEL_DEBUG,"eeprom content is OK!\n");
         restoreAdminSettings();
         restoreAddSysvars();
         restoreActionTable();
@@ -1810,9 +1513,7 @@ Logger.Log(LOGLEVEL_DEBUG,"Current firmware is = %s\n", FIRMWARE_CHECK );
         analogWrite(GREEN, 0);
         analogWrite(BLUE, 0);
       
-        Logger.Log(LOGLEVEL_DEBUG,"eeprom content is INVALID!\n");
         eeprom.wipe();  
-        Logger.Log(LOGLEVEL_DEBUG,"EEPROM cleared ... ");  
         resetAdminSettings2Default();
         resetUpdateInfo2Default();
         storeAdminSettings();
@@ -1820,21 +1521,7 @@ Logger.Log(LOGLEVEL_DEBUG,"Current firmware is = %s\n", FIRMWARE_CHECK );
         storeActionTable();
         storeUpdateInfo();
         eeprom.setMagic( eeprom.version2Magic() );
-        Logger.Log(LOGLEVEL_DEBUG,"magic newly calculated ... \n");
-
-        crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
-        Logger.Log(LOGLEVEL_DEBUG,"CRC is now: %x -> write to POS %d\n", crcCalc, EEPROM_POS_CRC32 );
-        eeprom.storeRaw( (char*) &crcCalc, EEPROM_MAXLEN_CRC32, EEPROM_POS_CRC32 );
         eeprom.validate();
-
-        eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
-        if( !beQuiet )
-        {
-            Logger.Log(LOGLEVEL_DEBUG, "reread CRC: %x\n", crcRead );
-        }
-        
-        eeprom.validate();   
-        Logger.Log(LOGLEVEL_DEBUG,"and set to ok and ready!\n");
       }
     }
     else
@@ -1843,9 +1530,7 @@ Logger.Log(LOGLEVEL_DEBUG,"Current firmware is = %s\n", FIRMWARE_CHECK );
       analogWrite(GREEN, 0);
       analogWrite(BLUE, 0);
       
-      Logger.Log(LOGLEVEL_DEBUG,"eeprom content is INVALID!\n");
       eeprom.wipe();  
-      Logger.Log(LOGLEVEL_DEBUG,"EEPROM cleared ... ");  
       resetAdminSettings2Default();
       resetUpdateInfo2Default();
       storeAdminSettings();
@@ -1853,21 +1538,7 @@ Logger.Log(LOGLEVEL_DEBUG,"Current firmware is = %s\n", FIRMWARE_CHECK );
       storeActionTable();
       storeUpdateInfo();
       eeprom.setMagic( eeprom.version2Magic() );
-      Logger.Log(LOGLEVEL_DEBUG,"magic newly calculated ... \n"); 
-      crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
-      Logger.Log(LOGLEVEL_DEBUG,"CRC is now: %x -> write to POS %d\n", crcCalc, EEPROM_POS_CRC32 );
-      eeprom.storeRaw( (char*) &crcCalc, EEPROM_MAXLEN_CRC32, EEPROM_POS_CRC32 );
       eeprom.validate();
-
-      eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
-
-      if( !beQuiet )
-      {
-          Logger.Log(LOGLEVEL_DEBUG, "reread CRC: %x\n", crcRead );
-      }
-
-      eeprom.validate();   
-      Logger.Log(LOGLEVEL_DEBUG,"and set to ok and ready!\n");
     }
   }
   else
@@ -1876,9 +1547,7 @@ Logger.Log(LOGLEVEL_DEBUG,"Current firmware is = %s\n", FIRMWARE_CHECK );
     analogWrite(GREEN, 0);
     analogWrite(BLUE, 0);
 
-    Logger.Log(LOGLEVEL_DEBUG,"eeprom status is >= EE_STATUS_INVALID_CRC!\n");
     eeprom.wipe();    
-    Logger.Log(LOGLEVEL_DEBUG,"EEPROM cleared ... ");  
     resetAdminSettings2Default();
     resetUpdateInfo2Default();
     storeAdminSettings();
@@ -1886,37 +1555,41 @@ Logger.Log(LOGLEVEL_DEBUG,"Current firmware is = %s\n", FIRMWARE_CHECK );
     storeActionTable();      
     storeUpdateInfo();
     eeprom.setMagic( eeprom.version2Magic() );
-    Logger.Log(LOGLEVEL_DEBUG,"magic newly calculated ... \n");       
-    crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
-    Logger.Log(LOGLEVEL_DEBUG,"CRC is now: %x -> write to POS %d\n", crcCalc, EEPROM_POS_CRC32 );
-    eeprom.storeRaw( (char*) &crcCalc, EEPROM_MAXLEN_CRC32, EEPROM_POS_CRC32 );
     eeprom.validate();
-    
-    eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
-
-    if( !beQuiet )
-    {
-        Logger.Log(LOGLEVEL_DEBUG, "reread CRC: %x\n", crcRead );
-    }
-            
-    eeprom.validate(); 
-    Logger.Log(LOGLEVEL_DEBUG,"and set to ok and ready!\n");   
   }
 
+//    updateUrl         = DEFAULT_UPDATE_URL;
+//    storeUpdateInfo();
+//    eeprom.validate();
+// #ifdef DO_LOG
+//      if( !beQuiet )
+//      {
+//          Logger.Log(LOGLEVEL_DEBUG, (const char*) "update reset to default %s\n", updateUrl.c_str());
+//      }
+// #endif // DO_LOG
+        
 
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "Connecting to >%s< using password >%s<\n", wlanSSID.c_str(), wlanPassphrase.c_str());
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "Connecting to >%s< using password >%s<\n", wlanSSID.c_str(), wlanPassphrase.c_str());
   }
+#endif // DO_LOG
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin(wlanSSID.c_str(), wlanPassphrase.c_str());
 
-  while (WiFi.status() != WL_CONNECTED) {
+  lastMillis = millis();
+  while( millis() - lastMillis < AUTO_RECONNECT_SECONDS && WiFi.status() != WL_CONNECTED) 
+  {
     delay(500);
-    if( !beQuiet )
+  }
+
+  if( WiFi.status() != WL_CONNECTED )
+  {
+    WiFi.begin(wlanSSID.c_str(), wlanPassphrase.c_str());
+    while( WiFi.status() != WL_CONNECTED ) 
     {
-      Logger.Log(LOGLEVEL_DEBUG, "." );
+      delay(500);
     }
   }
   
@@ -1924,37 +1597,47 @@ Logger.Log(LOGLEVEL_DEBUG,"Current firmware is = %s\n", FIRMWARE_CHECK );
   analogWrite(GREEN, 127);
   analogWrite(BLUE, 0);
 
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "WiFi connected\n" );
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "WiFi connected\n" );
   }
+#endif // DO_LOG
 
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "Starting NTP over UDP\n");
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "Starting NTP over UDP\n");
   }
+#endif // DO_LOG
 
   Udp.begin(localUDPPort);
 
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "Local port: %d ... waiting for time sync", Udp.localPort());
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "Local port: %d ... waiting for time sync", Udp.localPort());
   }
+#endif // DO_LOG
 
   // after syncing set initial time
   setSyncProvider(getNtpTime);
   setSyncInterval(SECS_PER_HOUR);
   setTime(now());
 
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "Time synced via NTP. Sync interval is set to %d seconds.\n", SECS_PER_HOUR );
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "Time synced via NTP. Sync interval is set to %d seconds.\n", SECS_PER_HOUR );
   }
+#endif // DO_LOG
 
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "Starting HTTP server\n");
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "Starting HTTP server\n");
   }
+#endif // DO_LOG
 
   server = ESP8266WebServer( (unsigned long) wwwServerPort.toInt() );
   server.on("/", setupPage);
@@ -1965,15 +1648,19 @@ Logger.Log(LOGLEVEL_DEBUG,"Current firmware is = %s\n", FIRMWARE_CHECK );
   localIP = WiFi.localIP();
   wwwServerIP = localIP.toString();
 
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "Webserver started. URL is: http://%s:%d\n", wwwServerIP.c_str(), wwwServerPort.toInt());
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "Webserver started. URL is: http://%s:%d\n", wwwServerIP.c_str(), wwwServerPort.toInt());
   }
+#endif // DO_LOG
  
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "Startup actions ...\n");
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "Startup actions ...\n");
   }
+#endif // DO_LOG
 
   startupActions();
 
@@ -2039,11 +1726,13 @@ void scanIIC()
 void alwaysOn(int timerNo, int port)
 {
 
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "... check always on for port %d and timer = %d, flag #1 is %d, flag #2 is %d\n", 
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "... check always on for port %d and timer = %d, flag #1 is %d, flag #2 is %d\n", 
       port, timerNo, tblEntry[port].actionFlag_1, tblEntry[port].actionFlag_2);
   }
+#endif // DO_LOG
 
 
   if( timerNo == 1 )
@@ -2054,10 +1743,12 @@ void alwaysOn(int timerNo, int port)
       tblEntry[port].actionFlag_1 |= ACTION_FLAG_ACTIVE;
       switchRelais(port, RELAIS_ON);
 
+#ifdef DO_LOG
       if( !beQuiet )
       {
-        Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #1 is manual ALWAYS ON\n", port);
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #1 is manual ALWAYS ON\n", port);
       }
+#endif // DO_LOG
 
     }
   }
@@ -2071,10 +1762,12 @@ void alwaysOn(int timerNo, int port)
         tblEntry[port].actionFlag_2 |= ACTION_FLAG_ACTIVE;
         switchRelais(port, RELAIS_ON);
 
+#ifdef DO_LOG
         if( !beQuiet )
         {
-          Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #2 is manual ALWAYS ON\n", port);
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #2 is manual ALWAYS ON\n", port);
         }
+#endif // DO_LOG
 
       }
     }
@@ -2091,10 +1784,12 @@ void alwaysOn(int timerNo, int port)
 void alwaysOff(int timerNo, int port)
 {
 
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "... check always off for port %d and timer = %d, flag #1 is %d, flag #2 is\n", port, timerNo, tblEntry[port].actionFlag_1, tblEntry[port].actionFlag_2);
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "... check always off for port %d and timer = %d, flag #1 is %d, flag #2 is\n", port, timerNo, tblEntry[port].actionFlag_1, tblEntry[port].actionFlag_2);
   }
+#endif // DO_LOG
 
   if( timerNo == 1 )
   {
@@ -2104,10 +1799,12 @@ void alwaysOff(int timerNo, int port)
       tblEntry[port].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
       switchRelais(port, RELAIS_OFF);
 
+#ifdef DO_LOG
       if( !beQuiet )
       {
-        Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #1 is manual ALWAYS OFF\n", port);
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #1 is manual ALWAYS OFF\n", port);
       }
+#endif // DO_LOG
 
     }
   }
@@ -2121,10 +1818,12 @@ void alwaysOff(int timerNo, int port)
         tblEntry[port].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
         switchRelais(port, RELAIS_OFF);
 
+#ifdef DO_LOG
         if( !beQuiet )
         {
-          Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #2 is manual ALWAYS OFF\n", port);
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #2 is manual ALWAYS OFF\n", port);
         }
+#endif // DO_LOG
 
       }
     }
@@ -2153,10 +1852,12 @@ int check4Action( void )
   secsSinceEpoch = CE.toLocal(utc, &tcr);
   nowMinutes = ( hour(secsSinceEpoch) * 60 ) + minute(secsSinceEpoch);
 
+#ifdef DO_LOG
   if( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "check4Action: check for minute-value: %d\n", nowMinutes );
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "check4Action: check for minute-value: %d\n", nowMinutes );
   }
+#endif // DO_LOG
 
 //  for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
   for( i = 0; i < CONNECTED_RELAIS; i++ )
@@ -2173,13 +1874,15 @@ int check4Action( void )
 
         if( chkMinutesFrom == nowMinutes )
         {
+#ifdef DO_LOG
           if( !beQuiet )
           {
             Logger.Log(LOGLEVEL_DEBUG, 
-              "action is time 1 - Begin %s:%s [%d] port %d. Actionflag is %d\n", 
+              (const char*) "action is time 1 - Begin %s:%s [%d] port %d. Actionflag is %d\n", 
               tblEntry[i].hourFrom_1.c_str(), tblEntry[i].minuteFrom_1.c_str(),
               chkMinutesFrom, i, tblEntry[i].actionFlag_1);
           }
+#endif // DO_LOG
 
           if( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) == 0 )
           {
@@ -2187,48 +1890,58 @@ int check4Action( void )
 
             switchRelais(i, RELAIS_ON);
 
+#ifdef DO_LOG
             if( !beQuiet )
             {
-              Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 1 to active\n");
+              Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 1 to active\n");
             }
+#endif // DO_LOG
           }
         }
 
         if(chkMinutesTo == nowMinutes )
         {
+#ifdef DO_LOG
           if( !beQuiet )
           {
             Logger.Log(LOGLEVEL_DEBUG, 
-              "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
+              (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
               tblEntry[i].hourTo_1.c_str(), tblEntry[i].minuteTo_1.c_str(),
               chkMinutesTo, i, tblEntry[i].actionFlag_1);
           }
+#endif // DO_LOG
 
           if( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) != 0 )
           {
             tblEntry[i].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_OFF);
 
+#ifdef DO_LOG
             if( !beQuiet )
             {
-              Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 1 to inactive\n");
+              Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 1 to inactive\n");
             }
+#endif // DO_LOG
           }
           else
           {
+#ifdef DO_LOG
             if( !beQuiet )
             {
-              Logger.Log(LOGLEVEL_DEBUG, "nothing to do ... actionFlag for time 1 is already inactive\n");
+              Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... actionFlag for time 1 is already inactive\n");
             }
+#endif // DO_LOG
           }
         }
       }
       else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
       {
+#ifdef DO_LOG
         if( !beQuiet )
         {
-          Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #1 is not auto\n", i);
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #1 is not auto\n", i);
         }
+#endif // DO_LOG
 
         if( tblEntry[i].mode.equalsIgnoreCase("on") )
         {
@@ -2245,10 +1958,12 @@ int check4Action( void )
     }
     else // if( tblEntry[i].enabled_1 )
     {
+#ifdef DO_LOG
       if( !beQuiet )
       {
-        Logger.Log(LOGLEVEL_DEBUG, "nothing to do ... entry for port %d time #1 disabled\n", i);
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... entry for port %d time #1 disabled\n", i);
       }
+#endif // DO_LOG
     }
 
     if( tblEntry[i].enabled_2 )
@@ -2260,61 +1975,73 @@ int check4Action( void )
 
         if(chkMinutesFrom == nowMinutes )
         {
+#ifdef DO_LOG
           if( !beQuiet )
           {
             Logger.Log(LOGLEVEL_DEBUG, 
-              "action is time 2 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
+              (const char*) "action is time 2 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
               tblEntry[i].hourFrom_2.c_str(), tblEntry[i].minuteFrom_2.c_str(),
               chkMinutesFrom, i, tblEntry[i].actionFlag_2);
           }
+#endif // DO_LOG
 
           if( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) == 0 )
           {
             tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_ON);
   
+#ifdef DO_LOG
             if( !beQuiet )
             {
-              Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 2 to active\n");
+              Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 2 to active\n");
             }
+#endif // DO_LOG
           }
         }
 
         if(chkMinutesTo == nowMinutes )
         {
+#ifdef DO_LOG
           if( !beQuiet )
           {
             Logger.Log(LOGLEVEL_DEBUG, 
-              "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
+              (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
               tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str(),
               chkMinutesTo, i, tblEntry[i].actionFlag_2);
           }
+#endif // DO_LOG
 
           if( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) != 0 )
           {
             tblEntry[i].actionFlag_2 &= ~ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_OFF);
 
+#ifdef DO_LOG
             if( !beQuiet )
             {
-              Logger.Log(LOGLEVEL_DEBUG, "set actionFlag for time 2 to inactive\n");
+              Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 2 to inactive\n");
             }
+#endif // DO_LOG
           }
           else
           {
+#ifdef DO_LOG
             if( !beQuiet )
             {
-              Logger.Log(LOGLEVEL_DEBUG, "nothing to do ... actionFlag for time 2 is already inactive\n");
+              Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... actionFlag for time 2 is already inactive\n");
             }
+#endif // DO_LOG
           }
         }
       }
       else // if( tblEntry[tmRow-1].mode.equalsIgnoreCase("auto") )
       {
+#ifdef DO_LOG
         if( !beQuiet )
         {
-          Logger.Log(LOGLEVEL_DEBUG, "... entry for port %d time #2 is not auto\n", i);
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #2 is not auto\n", i);
         }
+#endif // DO_LOG
 
         if( tblEntry[i].mode.equalsIgnoreCase("on") )
         {
@@ -2328,10 +2055,12 @@ int check4Action( void )
     }
     else // if( tblEntry[i].enabled_2 )
     {
+#ifdef DO_LOG
       if( !beQuiet )
       {
-        Logger.Log(LOGLEVEL_DEBUG, "nothing to do ... entry for port %d time #2 disabled\n", i);
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... entry for port %d time #2 disabled\n", i);
       }
+#endif // DO_LOG
     }
   }
 
@@ -2347,54 +2076,101 @@ int check4Action( void )
 //
 int handleUpdate( void )
 {
-//    int retVal = E_SUCCESS;
-    t_httpUpdate_return retVal;
-    int lastIntNumber;
-    String newFirmwareFile;
+    static t_httpUpdate_return retVal;
+    String newFirmwareFile, markerFile;
+    HTTPClient http;
+    int httpCode;
 
-// DEFAULT_UPDATE_URL              "http://192.168.1.122/ESP8266/firmware.bin/"
-// updateUrl = DEFAULT_UPDATE_URL;
+//    ESPhttpUpdate.rebootOnUpdate( true );
 
-    newFirmwareFile = updateUrl + lastNumber;
-
-    if( !beQuiet )
+    newFirmwareFile = updateUrl + String("firmware.bin") + String(lastNumber+1);
+    markerFile = updateUrl + String("firmware.") + String(lastNumber+1);
+    
+    http.begin(markerFile.c_str());  
+    httpCode = http.GET();
+    if(httpCode == HTTP_CODE_OK)
     {
-        Logger.Log(LOGLEVEL_DEBUG, "Handle update, next firmware is: %s\n", newFirmwareFile.c_str());
-    }
+// #ifdef DO_LOG
+        if( !beQuiet )
+        {
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "marker file %s exists\n", markerFile.c_str());
+        }
+// #endif // DO_LOG
+      
+        http.end();
+        lastNumber++;
+        storeUpdateInfo();   
+             
+// #ifdef DO_LOG
+        if( !beQuiet )
+        {
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "Handle update, next firmware is: %s\n", newFirmwareFile.c_str());
+        }
+// #endif // DO_LOG
+        retVal = ESPhttpUpdate.update(newFirmwareFile.c_str());
+  
+//        retVal = ESPhttpUpdate.update(newFirmwareFile.c_str());
 
-    switch( (retVal = ESPhttpUpdate.update(newFirmwareFile.c_str())) )
-    {
-        case HTTP_UPDATE_FAILED:
-            if( !beQuiet )
-            {
-                Logger.Log(LOGLEVEL_DEBUG, "HTTP_UPDATE_FAILED! Error (%d): %s\n", 
-                           ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-            }
-            break;
-        case HTTP_UPDATE_NO_UPDATES:
-            if( !beQuiet )
-            {
-                Logger.Log(LOGLEVEL_DEBUG, "HTTP_UPDATE_NO_UPDATES\n");
-            }
-            lastIntNumber = lastNumber.toInt();
-            lastNumber = String( lastIntNumber );
-            storeUpdateInfo();
+// #ifdef DO_LOG
+        if( !beQuiet )
+        {
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "Update done retval was %x\n", retVal);
+        }
+// #endif // DO_LOG
+
+
+//        switch( (retVal = ESPhttpUpdate.update(newFirmwareFile.c_str())) )
+        switch( retVal )
+        {
+            case HTTP_UPDATE_FAILED:
+// #ifdef DO_LOG
+                if( !beQuiet )
+                {
+                    Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_FAILED! Error (%d): %s\n", 
+                               ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+                }
+// #endif // DO_LOG
+                break;
+            case HTTP_UPDATE_NO_UPDATES:
+//                lastNumber++;
+//                storeUpdateInfo();
+// #ifdef DO_LOG
+                if( !beQuiet )
+                {
+                    Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_NO_UPDATES\n");
+                }
+// #endif // DO_LOG
             break;
         case HTTP_UPDATE_OK:
-            if( !beQuiet )
-            {
-                Logger.Log(LOGLEVEL_DEBUG, "HTTP_UPDATE_OK\n");
-            }
-            lastIntNumber = lastNumber.toInt();
-            lastNumber = String( lastIntNumber );
-            storeUpdateInfo();
-            break;
-        default:
-            if( !beQuiet )
-            {
-                Logger.Log(LOGLEVEL_DEBUG, "Unknown retval %d\n", (int) retVal);
-            }
-            break;
+//                lastNumber++;
+//                storeUpdateInfo();
+// #ifdef DO_LOG            
+                if( !beQuiet )
+                {
+                    Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_OK - lastNumber = %d\n", lastNumber);
+                }
+// #endif // DO_LOG
+                break;
+            default:
+// #ifdef DO_LOG
+                if( !beQuiet )
+                {
+                    Logger.Log(LOGLEVEL_DEBUG, (const char*) "Unknown retval %d\n", (int) retVal);
+                }
+// #endif // DO_LOG
+                break;
+        }
+    }
+    else
+    {
+// #ifdef DO_LOG
+        if( !beQuiet )
+        {
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "NO marker file %s\n", markerFile.c_str());
+        }
+// #endif // DO_LOG
+
+        http.end();
     }
 
     return((int) retVal);
@@ -2422,11 +2198,13 @@ void loop()
   // the weekday now (Sunday is day 1) 
   if( weekday(secsSinceEpoch) != lastUpdateCheck )
   {
-//    if( !beQuiet )
-//    {
-//      Logger.Log(LOGLEVEL_DEBUG, "loop: day has changed from %d to %d\n", 
-//                 lastUpdateCheck, weekday(secsSinceEpoch));
-//    }
+#ifdef DO_LOG
+    if( !beQuiet )
+    {
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "loop: day has changed from %d to %d\n", 
+                 lastUpdateCheck, weekday(secsSinceEpoch));
+    }
+#endif // DO_LOG
 
 //    if( handleUpdate() == HTTP_UPDATE_OK )
 //    {
@@ -2441,10 +2219,12 @@ void loop()
 
     if( nowMinutes > minutesLastCheck )
     {
+#ifdef DO_LOG
         if( !beQuiet )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "loop: hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "loop: hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
         }
+#endif // DO_LOG
 
         minutesLastCheck = nowMinutes;
         check4Action();
@@ -2463,7 +2243,7 @@ void loop()
 
 /* ************** ++++++++++ ************* +++++++++++++++ */
 
-void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, int tmRow, char* sRow, char *sHour, char* sMinute )
+void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, char* sRow, char *sHour, char* sMinute )
 {
   char sNum[10];
   sprintf(sNum, "%d", tmNum);
@@ -2514,18 +2294,18 @@ void doTimeSelect( int tmNum, int tmRow, char* sRow )
 {
   if( tmNum == 1 )
   {
-    doTimeOnSelect( (char*)"from", (char*)"einschalten", (char*)"#07F479", tmNum, tmRow,  sRow,
+    doTimeOnSelect( (char*)"from", (char*)"einschalten", (char*)"#07F479", tmNum, sRow,
                      (char*)tblEntry[tmRow-1].hourFrom_1.c_str(), (char*)tblEntry[tmRow-1].minuteFrom_1.c_str() );
 
-    doTimeOnSelect( (char*)"to",   (char*)"ausschalten", (char*)"#D4C9C9" , tmNum, tmRow,  sRow,
+    doTimeOnSelect( (char*)"to",   (char*)"ausschalten", (char*)"#D4C9C9" , tmNum, sRow,
                      (char*)tblEntry[tmRow-1].hourTo_1.c_str(), (char*)tblEntry[tmRow-1].minuteTo_1.c_str() );
   }
   else
   {
-    doTimeOnSelect( (char*)"from", (char*)"einschalten", (char*)"#07F479", tmNum, tmRow,  sRow,
+    doTimeOnSelect( (char*)"from", (char*)"einschalten", (char*)"#07F479", tmNum, sRow,
                     (char*)tblEntry[tmRow-1].hourFrom_2.c_str(), (char*)tblEntry[tmRow-1].minuteFrom_2.c_str() );
 
-    doTimeOnSelect( (char*)"to",   (char*)"ausschalten", (char*)"#D4C9C9" , tmNum, tmRow,  sRow,
+    doTimeOnSelect( (char*)"to",   (char*)"ausschalten", (char*)"#D4C9C9" , tmNum, sRow,
                     (char*)tblEntry[tmRow-1].hourTo_2.c_str(), (char*)tblEntry[tmRow-1].minuteTo_2.c_str() );
   }
 }
@@ -2665,79 +2445,111 @@ void setupPage()
 {
 
     int i;
-    unsigned long crcCalc, crcRead;
     IPAddress localIP;
 
     pageContent = "";
     localIP = WiFi.localIP();
 
+#ifdef DO_LOG
     if( !beQuiet )
     {
-         Logger.Log(LOGLEVEL_DEBUG, "handleIndexPage\n");
+         Logger.Log(LOGLEVEL_DEBUG, (const char*) "handleIndexPage\n");
     }
+#endif // DO_LOG
 
     for(i = 0; i < server.args(); i++ )
     {
+#ifdef DO_LOG
         if( !beQuiet )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
         }
+#endif // DO_LOG
     }
 
     if( server.method() == SERVER_METHOD_POST )
 //        server.hasArg(INDEX_BUTTONNAME_ADMIN)  )
     {
+#ifdef DO_LOG
         if( !beQuiet )
         {
-             Logger.Log(LOGLEVEL_DEBUG, "POST REQUEST\n");
+             Logger.Log(LOGLEVEL_DEBUG, (const char*) "POST REQUEST\n");
         }
+#endif // DO_LOG
     }
     else
     {
+#ifdef DO_LOG
         if( !beQuiet )
         {
-             Logger.Log(LOGLEVEL_DEBUG, "GET REQUEST\n");
+             Logger.Log(LOGLEVEL_DEBUG, (const char*) "GET REQUEST\n");
         }
+#endif // DO_LOG
     }
 
     if( server.hasArg("submit") && server.arg("submit").equalsIgnoreCase("speichern") )
 
     {
-      for( i = 0; i < 8; i++ )
+      // for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
+      for( i = 0; i < CONNECTED_RELAIS; i++ )
       {
-tblEntry[i].name         = server.arg( _form_keywords_[i][KW_IDX_BEZEICHNER] );
-tblEntry[i].mode         = server.arg( _form_keywords_[i][KW_IDX_MODE] );
-tblEntry[i].hourFrom_1   = server.arg( _form_keywords_[i][KW_IDX_HFROM_1] );
-tblEntry[i].minuteFrom_1 = server.arg( _form_keywords_[i][KW_IDX_MFROM_1] );
-tblEntry[i].hourTo_1     = server.arg( _form_keywords_[i][KW_IDX_HTO_1] );
-tblEntry[i].minuteTo_1   = server.arg( _form_keywords_[i][KW_IDX_MTO_1] );
-tblEntry[i].hourFrom_2   = server.arg( _form_keywords_[i][KW_IDX_HFROM_2] );
-tblEntry[i].minuteFrom_2 = server.arg( _form_keywords_[i][KW_IDX_MFROM_2] );
-tblEntry[i].hourTo_2     = server.arg( _form_keywords_[i][KW_IDX_HTO_2] );
-tblEntry[i].minuteTo_2   = server.arg( _form_keywords_[i][KW_IDX_MTO_2] );
 
-tblEntry[i].enabled_1   = server.arg( _form_keywords_[i][ KW_IDX_ENABLED_1] ).equalsIgnoreCase("aktiv") ? true : false ;
-tblEntry[i].extEnable_1 = server.arg( _form_keywords_[i][ KW_IDX_EXT_1] ).equalsIgnoreCase("aktiv") ? true : false;
-tblEntry[i].enabled_2   = server.arg( _form_keywords_[i][ KW_IDX_EXT_2] ).equalsIgnoreCase("aktiv") ? true : false;
-tblEntry[i].extEnable_2 = server.arg( _form_keywords_[i][ KW_IDX_ENABLED_2] ).equalsIgnoreCase("aktiv") ? true : false;
+        formFieldName[i] = String("bezeichner") + String(i);
+        formFieldName[i] = String("enabled1_")  + String(i);
+        formFieldName[i] = String("hfrom1_")    + String(i);
+        formFieldName[i] = String("mfrom1_")    + String(i);
+        formFieldName[i] = String("hto1_")      + String(i);
+        formFieldName[i] = String("mto1_")      + String(i);
+        formFieldName[i] = String("enabled2_")  + String(i);
+        formFieldName[i] = String("hfrom2_")    + String(i);
+        formFieldName[i] = String("mfrom2_")    + String(i);
+        formFieldName[i] = String("hto2_")      + String(i);
+        formFieldName[i] = String("mto2_")      + String(i);
+        formFieldName[i] = String("ext1_")      + String(i);
+        formFieldName[i] = String("ext2_")      + String(i);
+        formFieldName[i] = String("mode")       + String(i);
+
+        tblEntry[i].name         = server.arg(formFieldName[i]);
+        tblEntry[i].mode         = server.arg(formFieldName[i]);
+        tblEntry[i].hourFrom_1   = server.arg(formFieldName[i]);
+        tblEntry[i].minuteFrom_1 = server.arg(formFieldName[i]);
+        tblEntry[i].hourTo_1     = server.arg(formFieldName[i]);
+        tblEntry[i].minuteTo_1   = server.arg(formFieldName[i]);
+        tblEntry[i].hourFrom_2   = server.arg(formFieldName[i]);
+        tblEntry[i].minuteFrom_2 = server.arg(formFieldName[i]);
+        tblEntry[i].hourTo_2     = server.arg(formFieldName[i]);
+        tblEntry[i].minuteTo_2   = server.arg(formFieldName[i]);
+
+        tblEntry[i].enabled_1   = server.arg(formFieldName[i]).equalsIgnoreCase("aktiv") ? true : false;
+        tblEntry[i].extEnable_1 = server.arg(formFieldName[i]).equalsIgnoreCase("aktiv") ? true : false;
+        tblEntry[i].enabled_2   = server.arg(formFieldName[i]).equalsIgnoreCase("aktiv") ? true : false;
+        tblEntry[i].extEnable_2 = server.arg(formFieldName[i]).equalsIgnoreCase("aktiv") ? true : false;
+
+
+
+#ifdef NOT_COMPACT
+        tblEntry[i].name         = server.arg( _form_keywords_[i][KW_IDX_BEZEICHNER] );
+        tblEntry[i].mode         = server.arg( _form_keywords_[i][KW_IDX_MODE] );
+        tblEntry[i].hourFrom_1   = server.arg( _form_keywords_[i][KW_IDX_HFROM_1] );
+        tblEntry[i].minuteFrom_1 = server.arg( _form_keywords_[i][KW_IDX_MFROM_1] );
+        tblEntry[i].hourTo_1     = server.arg( _form_keywords_[i][KW_IDX_HTO_1] );
+        tblEntry[i].minuteTo_1   = server.arg( _form_keywords_[i][KW_IDX_MTO_1] );
+        tblEntry[i].hourFrom_2   = server.arg( _form_keywords_[i][KW_IDX_HFROM_2] );
+        tblEntry[i].minuteFrom_2 = server.arg( _form_keywords_[i][KW_IDX_MFROM_2] );
+        tblEntry[i].hourTo_2     = server.arg( _form_keywords_[i][KW_IDX_HTO_2] );
+        tblEntry[i].minuteTo_2   = server.arg( _form_keywords_[i][KW_IDX_MTO_2] );
+
+        tblEntry[i].enabled_1   = server.arg( _form_keywords_[i][ KW_IDX_ENABLED_1] ).equalsIgnoreCase("aktiv") ? true : false ;
+        tblEntry[i].extEnable_1 = server.arg( _form_keywords_[i][ KW_IDX_EXT_1] ).equalsIgnoreCase("aktiv") ? true : false;
+        tblEntry[i].enabled_2   = server.arg( _form_keywords_[i][ KW_IDX_EXT_2] ).equalsIgnoreCase("aktiv") ? true : false;
+        tblEntry[i].extEnable_2 = server.arg( _form_keywords_[i][ KW_IDX_ENABLED_2] ).equalsIgnoreCase("aktiv") ? true : false;
+#endif // NOT_COMPACT
 
       }
 
       storeActionTable();
-      crcCalc = eeprom.crc( EEPROM_STD_DATA_BEGIN, EEPROM_EXT_DATA_END );
-      Logger.Log(LOGLEVEL_DEBUG,"CRC is now: %x -> write to POS %d\n", crcCalc, EEPROM_POS_CRC32 );
-      eeprom.storeRaw( (char*) &crcCalc, EEPROM_MAXLEN_CRC32, EEPROM_POS_CRC32 );
       eeprom.validate();
 
-      eeprom.restoreRaw( (char*) &crcRead, EEPROM_POS_CRC32, EEPROM_MAXLEN_CRC32, EEPROM_MAXLEN_CRC32);
-
-      if( !beQuiet )
-      {
-          Logger.Log(LOGLEVEL_DEBUG, "reread CRC: %x\n", crcRead );
-      }
-
-      eeprom.validate();   
-      Logger.Log(LOGLEVEL_DEBUG,"and set to ok and ready!\n");
       startupActions();
 // return;
 
@@ -2846,36 +2658,46 @@ void apiPage()
     pageContent += "</head>\n";
     pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\">\n";
 
+#ifdef DO_LOG
     if( !beQuiet )
     {
-         Logger.Log(LOGLEVEL_DEBUG, "apiPage\n");
+         Logger.Log(LOGLEVEL_DEBUG, (const char*) "apiPage<br>\n");
     }
+#endif // DO_LOG
+
+    pageContent += String("apiPage<br>\n");
 
     for(i = 0; i < server.args(); i++ )
     {
-        pageContent += server.argName(i) + String("=") + server.arg(i);
+        pageContent += server.argName(i) + String("=") + server.arg(i) + String("<br>\n");
+#ifdef DO_LOG
         if( !beQuiet )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "%s = %s\n", server.argName(i).c_str(), server.arg(i).c_str() );
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "%s = %s<br>\n", server.argName(i).c_str(), server.arg(i).c_str() );
         }
+#endif // DO_LOG
     }
 
     if( server.method() == SERVER_METHOD_POST )
 //        server.hasArg(INDEX_BUTTONNAME_ADMIN)  )
     {
-        pageContent += String("POST REQUEST\n");
+        pageContent += String("POST REQUEST<br>\n");
+#ifdef DO_LOG
         if( !beQuiet )
         {
-             Logger.Log(LOGLEVEL_DEBUG, "POST REQUEST\n");
+             Logger.Log(LOGLEVEL_DEBUG, (const char*) "POST REQUEST<br>\n");
         }
+#endif // DO_LOG
     }
     else
     {
-        pageContent += String("GET REQUEST\n");
+        pageContent += String("GET REQUEST<br>\n");
+#ifdef DO_LOG
         if( !beQuiet )
         {
-             Logger.Log(LOGLEVEL_DEBUG, "GET REQUEST\n");
+             Logger.Log(LOGLEVEL_DEBUG, (const char*) "GET REQUEST<br>\n");
         }
+#endif // DO_LOG
     }
 
     pageContent +="</body>\n";
@@ -2886,3 +2708,35 @@ void apiPage()
 
 /* ************** ++++++++++ ************* +++++++++++++++ */
 
+#ifdef HTTP_CLIENT
+HTTPClient http;
+http.begin("http://192.168.0.104:8080/webappfordemo/Version");  
+int httpCode = http.GET();
+if(httpCode == HTTP_CODE_OK)
+{
+   Serial.print("HTTP response code ");
+   Serial.println(httpCode);
+   String response = http.getString();
+   Serial.println(response);
+}
+  
+  // We now create a URI for the request
+  String url = "/stan";
+
+  Serial.print("Requesting URL: ");
+  Serial.println(url);
+
+  // This will send the request to the server
+  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" + 
+               "Connection: close\r\n\r\n");
+  delay(10);
+
+  // Read all the lines of the reply from server and print them to Serial
+  Serial.println("Respond:");
+  while(client.available()){
+    String line = client.readStringUntil('\r');
+    Serial.print(line);
+  }
+#endif // HTTP_CLIENT
+  

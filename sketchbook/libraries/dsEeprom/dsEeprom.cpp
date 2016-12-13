@@ -81,10 +81,12 @@ unsigned long dsEeprom::crc( int startPos, int length )
     crc = ~crc;
   }
 
+#ifdef DEBUG
   if( DOLOG )
   {
-    Logger.Log(LOGLEVEL_DEBUG, "eeprom in crc: new value is %x\n", crc);
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom in crc: new value is %x\n", crc);
   }
+#endif // DEBUG
 
   return crc;
 }
@@ -196,7 +198,7 @@ short dsEeprom::getStatus( void )
 //
 void dsEeprom::wipe( void )
 {
-  if( blockSize > 0 )
+  if( blockSize > 0 && blockSize <= EEPROM_MAX_SIZE )
   {
     for( int index = 0; index < blockSize; index++ )
     {
@@ -206,8 +208,13 @@ void dsEeprom::wipe( void )
 #ifdef ESP8266
     EEPROM.commit();
 #endif // ESP8266
-
+ 
   }
+  else
+  {
+    status |= EE_STATUS_INVALID_SIZE;
+  }
+
 }
 //
 //
@@ -221,25 +228,31 @@ int dsEeprom::storeFieldLength( char* len, int dataIndex )
 
   if( status & EE_STATUS_INVALID_SIZE )
   {
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "eeprom has status EE_STATUS_INVALID_SIZE\n");
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom has status EE_STATUS_INVALID_SIZE\n");
     }
+#endif // DEBUG
 
   }
   else
   {
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "write LEN byte [%x] to pos %d\n", len[0], dataIndex);
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "write LEN byte [%x] to pos %d\n", len[0], dataIndex);
     }
+#endif // DEBUG
   
     EEPROM.write(dataIndex, len[0]);
 
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "write LEN byte [%x] to pos %d\n", len[1], dataIndex+1);
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "write LEN byte [%x] to pos %d\n", len[1], dataIndex+1);
     }
+#endif // DEBUG
   
     EEPROM.write(dataIndex+1, len[1]);
 
@@ -257,26 +270,32 @@ int dsEeprom::restoreFieldLength( char* len, int dataIndex )
 
   if( status & EE_STATUS_INVALID_SIZE )
   {
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "eeprom has status EE_STATUS_INVALID_SIZE\n");
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom has status EE_STATUS_INVALID_SIZE\n");
     }
+#endif // DEBUG
   }
   else
   {
     len[0] = EEPROM.read(dataIndex);
 
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "got LEN byte [%x] from pos %d\n", len[0], dataIndex);
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "got LEN byte [%x] from pos %d\n", len[0], dataIndex);
     }
+#endif // DEBUG
 
     len[1] = EEPROM.read(dataIndex+1);
 
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "got LEN byte [%x] from pos %d\n", len[1], dataIndex+1);
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "got LEN byte [%x] from pos %d\n", len[1], dataIndex+1);
     }
+#endif // DEBUG
   }
 
   return(retVal);
@@ -292,38 +311,47 @@ int dsEeprom::storeBoolean(  char* data, int dataIndex )
 
     if( status & EE_STATUS_INVALID_SIZE )
     {
+#ifdef DEBUG
         if( DOLOG )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "eeprom has status EE_STATUS_INVALID_SIZE\n");
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom has status EE_STATUS_INVALID_SIZE\n");
         }
-
+#endif // DEBUG
     }
     else
     {
+#ifdef DEBUG
         if( DOLOG )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "store boolean to eeprom: Address is [%d]\n", dataIndex);
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "store boolean to eeprom: Address is [%d]\n", dataIndex);
         }
+#endif // DEBUG
 
         if( (retVal = storeFieldLength( (char*) &len, dataIndex )) == 0 )
         {
+#ifdef DEBUG
             if( DOLOG )
             {
-                Logger.Log(LOGLEVEL_DEBUG, "Wrote:");
+                Logger.Log(LOGLEVEL_DEBUG, (const char*) "Wrote:");
             }
+#endif // DEBUG
     
             for (int i = 0; i < len; ++i)
             {
                 EEPROM.write(dataIndex + EEPROM_LEADING_LENGTH + i, data[i]);
+#ifdef DEBUG
                 if( DOLOG )
                 {
-                    Logger.Log(LOGLEVEL_DEBUG, " %x", data[i]); 
+                    Logger.Log(LOGLEVEL_DEBUG, (const char*) " %x", data[i]); 
                 }
+#endif // DEBUG
             }
+#ifdef DEBUG
             if( DOLOG )
             {
-                Logger.Log(LOGLEVEL_DEBUG, "\n");
+                Logger.Log(LOGLEVEL_DEBUG, (const char*) "\n");
             }
+#endif // DEBUG
         }
     }
 
@@ -339,17 +367,21 @@ int dsEeprom::restoreBoolean( char *data, int dataIndex )
 
     if( status & EE_STATUS_INVALID_SIZE )
     {
+#ifdef DEBUG
       if( DOLOG )
       {
-          Logger.Log(LOGLEVEL_DEBUG, "eeprom has status EE_STATUS_INVALID_SIZE\n");
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom has status EE_STATUS_INVALID_SIZE\n");
       }
+#endif // DEBUG
     }
     else
     {
+#ifdef DEBUG
         if( DOLOG )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "restore boolean from eeprom: Address is [%d]\n", dataIndex);
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "restore boolean from eeprom: Address is [%d]\n", dataIndex);
         }
+#endif // DEBUG
 
         rdValue = EEPROM.read(dataIndex+ EEPROM_LEADING_LENGTH);
 
@@ -382,38 +414,48 @@ int dsEeprom::storeRaw( const char* data, short len, int dataIndex )
 
     if( status & EE_STATUS_INVALID_SIZE )
     {
+#ifdef DEBUG
       if( DOLOG )
       {
-          Logger.Log(LOGLEVEL_DEBUG, "eeprom has status EE_STATUS_INVALID_SIZE\n");
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom has status EE_STATUS_INVALID_SIZE\n");
       }
+#endif // DEBUG
     }
     else
     {
+#ifdef DEBUG
         if( DOLOG )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "store raw data to eeprom: Address is [%d] - len = %d\n",
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "store raw data to eeprom: Address is [%d] - len = %d\n",
                 dataIndex, len );
         }
+#endif // DEBUG
 
+#ifdef DEBUG
         if( DOLOG )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "Wrote:");
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "Wrote:");
         }
+#endif // DEBUG
 
         for (int i = 0; i < len; ++i)
         {
             EEPROM.write(dataIndex+i, data[i]);
 
+#ifdef DEBUG
             if( DOLOG )
             {
-                Logger.Log(LOGLEVEL_DEBUG, " wr[%d] -> %x\n", i, data[i]); 
+                Logger.Log(LOGLEVEL_DEBUG, (const char*) " wr[%d] -> %x\n", i, data[i]); 
             }
 
+#endif // DEBUG
         }
+#ifdef DEBUG
         if( DOLOG )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "\n");
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "\n");
         }
+#endif // DEBUG
     }
 
     return(retVal);
@@ -430,36 +472,44 @@ int dsEeprom::restoreRaw( char* data, int dataIndex, int len, int maxLen)
   
   if( status & EE_STATUS_INVALID_SIZE )
   {
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "eeprom has status EE_STATUS_INVALID_SIZE\n");
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom has status EE_STATUS_INVALID_SIZE\n");
     }
+#endif // DEBUG
   }
   else
   {
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "restore raw data from eeprom: Address is [%d] - maxlen = %d\n",
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "restore raw data from eeprom: Address is [%d] - maxlen = %d\n",
                 dataIndex, maxLen);
     }
+#endif // DEBUG
 
     if( len > 0 )
     {
       for( int i=0; i < len && i < maxLen; i++ )
       {
         c = EEPROM.read(dataIndex + i);
+#ifdef DEBUG
         if( DOLOG )
         {
-          Logger.Log(LOGLEVEL_DEBUG, "rd[%d] <- %x\n", i, c);
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "rd[%d] <- %x\n", i, c);
         }
+#endif // DEBUG
         *data++ = c;
       }
     }
 
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, " - done!");
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) " - done!");
     }
+#endif // DEBUG
   }
 
   return(retVal);
@@ -474,41 +524,51 @@ int dsEeprom::storeBytes( const char* data, short len, int dataIndex )
 
     if( status & EE_STATUS_INVALID_SIZE )
     {
+#ifdef DEBUG
       if( DOLOG )
       {
-        Logger.Log(LOGLEVEL_DEBUG, "eeprom has status EE_STATUS_INVALID_SIZE\n");
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom has status EE_STATUS_INVALID_SIZE\n");
       }
+#endif // DEBUG
     }
     else
     {
+#ifdef DEBUG
         if( DOLOG )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "store bytes to eeprom: Address is [%d] - len = %d\n",
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "store bytes to eeprom: Address is [%d] - len = %d\n",
                 dataIndex, len );
         }
+#endif // DEBUG
 
         if( (retVal = storeFieldLength( (char*) &len, dataIndex )) == 0 )
         {
 
+#ifdef DEBUG
             if( DOLOG )
             {
-                Logger.Log(LOGLEVEL_DEBUG, "Wrote:\n");
+                Logger.Log(LOGLEVEL_DEBUG, (const char*) "Wrote:\n");
             }
+#endif // DEBUG
 
             for (int i = 0; i < len; ++i)
             {
                 EEPROM.write(dataIndex + EEPROM_LEADING_LENGTH + i, data[i]);
 
+#ifdef DEBUG
                 if( DOLOG )
                 {
-                    Logger.Log(LOGLEVEL_DEBUG, " wr -> %x\n", data[i]); 
+                    Logger.Log(LOGLEVEL_DEBUG, (const char*) " wr -> %x\n", data[i]); 
                 }
+#endif // DEBUG
             }
         }
+#ifdef DEBUG
         if( DOLOG )
         {
-            Logger.Log(LOGLEVEL_DEBUG, "\n");
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "\n");
         }
+#endif // DEBUG
     }
 
     return(retVal);
@@ -525,18 +585,22 @@ int dsEeprom::restoreBytes( String& data, int dataIndex, int len, int maxLen)
   
   if( status & EE_STATUS_INVALID_SIZE )
   {
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "eeprom has status EE_STATUS_INVALID_SIZE\n");
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom has status EE_STATUS_INVALID_SIZE\n");
     }
+#endif // DEBUG
   }
   else
   {
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "restore data from eeprom: Address is [%d] - maxlen = %d\n",
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "restore data from eeprom: Address is [%d] - maxlen = %d\n",
                 dataIndex, maxLen);
     }
+#endif // DEBUG
 
     if( len > 0 )
     {
@@ -544,18 +608,22 @@ int dsEeprom::restoreBytes( String& data, int dataIndex, int len, int maxLen)
       for( int i=0; i < len && i < maxLen; i++ )
       {
         c = EEPROM.read(dataIndex + EEPROM_LEADING_LENGTH + i);
+#ifdef DEBUG
         if( DOLOG )
         {
-          Logger.Log(LOGLEVEL_DEBUG, "rd <- %c", c);
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "rd <- %c", c);
         }
+#endif // DEBUG
         data += c;
       }
     }
 
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, " - done!\n");
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) " - done!\n");
     }
+#endif // DEBUG
   }
 
   return(retVal);
@@ -571,16 +639,18 @@ int dsEeprom::storeString( String data, int maxLen, int dataIndex )
 
   if( status & EE_STATUS_INVALID_SIZE )
   {
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "eeprom has status EE_STATUS_INVALID_SIZE\n");
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom has status EE_STATUS_INVALID_SIZE\n");
     }
+#endif // DEBUG
   }
   else
   {
     data.trim();
 
-    if( data.length() <= maxLen )
+    if( data.length() <= (unsigned int) maxLen )
     {
       wrLen = data.length();
     }
@@ -604,20 +674,24 @@ int dsEeprom::restoreString( String& data, int dataIndex, int maxLen )
   
   if( status & EE_STATUS_INVALID_SIZE )
   {
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "eeprom has status EE_STATUS_INVALID_SIZE\n");
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom has status EE_STATUS_INVALID_SIZE\n");
     }
+#endif // DEBUG
   }
   else
   {
     if( (retVal = restoreFieldLength( (char*) &len, dataIndex )) == 0 )
     {
       retVal = restoreBytes( data, dataIndex, len, maxLen );
+#ifdef DEBUG
       if( DOLOG )
       {
-        Logger.Log(LOGLEVEL_DEBUG, " - done!\n");
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) " - done!\n");
       }
+#endif // DEBUG
     }
   }
 
@@ -635,10 +709,12 @@ bool dsEeprom::isValid()
   if( magic == 0 || (rdMagic = EEPROM.read( EEPROM_POS_MAGIC )) !=  magic )
   {
     retVal = false;
+#ifdef DEBUG
     if( DOLOG )
     {
-      Logger.Log(LOGLEVEL_DEBUG, "wrong magic: %x should be %x\n", rdMagic, magic);
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "wrong magic: %x should be %x\n", rdMagic, magic);
     }
+#endif // DEBUG
   }
   else
   {
@@ -653,26 +729,37 @@ bool dsEeprom::isValid()
 //
 bool dsEeprom::validate()
 {
-  bool retVal = false;
+    bool retVal = true;
 
-  if( magic != 0 )
-  {
-    EEPROM.write( EEPROM_POS_MAGIC, magic );
-    retVal = true;
+    if( blockSize > 0 && blockSize <= EEPROM_MAX_SIZE )
+    {
+        EEPROM.write( EEPROM_POS_MAGIC, magic );
+        this->crc32Old = crc( EEPROM_STD_DATA_BEGIN, this->blockSize );
+        this->crc32New = this->crc32Old;
+        storeRaw( (char*) &this->crc32Old, EEPROM_MAXLEN_CRC32, EEPROM_POS_CRC32 );
 
 #ifdef ESP8266
     EEPROM.commit();
 #endif // ESP8266
-  }
 
-  return(retVal);
+    }
+    else
+    {
+        status |= EE_STATUS_INVALID_SIZE;
+    }
+
+    return(retVal);
 }
 
 void dsEeprom::setBlocksize( unsigned int newSize )
 {
-  if( newSize <= EEPROM_MAX_SIZE )
+  if( newSize > 0 && newSize <= EEPROM_MAX_SIZE )
   {
     blockSize = newSize;
+  }
+  else
+  {
+    status |= EE_STATUS_INVALID_SIZE;
   }
 }
 
