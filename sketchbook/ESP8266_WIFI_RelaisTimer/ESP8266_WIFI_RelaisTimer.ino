@@ -70,8 +70,6 @@
 //
 #define BE_QUIET			false
 bool beQuiet;
-#define RELAIS_OFF               HIGH
-#define RELAIS_ON                LOW
 //
 //
 // ************************************************************************
@@ -124,8 +122,16 @@ bool beQuiet;
 //        using a transistor amplifier
 //
 // #undef ESP_HAS_PCF8574
-
-
+//
+//
+#ifdef ESP_HAS_PCF8574
+#define RELAIS_OFF               HIGH
+#define RELAIS_ON                LOW
+#else
+#define RELAIS_OFF               HIGH
+#define RELAIS_ON                LOW
+#endif // ESP_HAS_PCF8574
+//
 //
 // ************************************************************************
 // Logging
@@ -1138,11 +1144,27 @@ void toggleRelais(int port)
 void switchRelais(int port, int newStatus)
 {
 
+// #ifdef DO_LOG
+// if ( !beQuiet )
+// {
+//    Logger.Log(LOGLEVEL_DEBUG, "switch relais[%d] to %d\n", port, newStatus);
+// }
+// #endif // DO_LOG
+
 #ifdef ESP_HAS_PCF8574
   PCF_38.write(port, newStatus);
 #else
   digitalWrite( port, newStatus );
 #endif // ESP_HAS_PCF8574
+
+  if( newStatus == RELAIS_OFF)
+  {
+    tblEntry[port].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
+  }
+  else
+  {
+    tblEntry[port].actionFlag_1 |= ACTION_FLAG_ACTIVE;
+  }
 
 }
 
@@ -1223,7 +1245,6 @@ void startupActions( void )
               }
 #endif // DO_LOG
 
-              tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
               switchRelais(i, RELAIS_ON);
             }
           }
@@ -1242,7 +1263,6 @@ void startupActions( void )
             }
 #endif // DO_LOG
 
-            tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_ON);
           }
         }
@@ -1296,7 +1316,6 @@ void startupActions( void )
               }
 #endif // DO_LOG
 
-              tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
               switchRelais(i, RELAIS_ON);
             }
           }
@@ -1316,7 +1335,6 @@ void startupActions( void )
             }
 #endif // DO_LOG
 
-            tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_ON);
           }
         }
@@ -1665,7 +1683,6 @@ void alwaysOn(int timerNo, int port)
     if ( (tblEntry[port].actionFlag_1 & ACTION_FLAG_ALWAYS_ON) == 0 )
     {
       tblEntry[port].actionFlag_1 |= ACTION_FLAG_ALWAYS_ON;
-      tblEntry[port].actionFlag_1 |= ACTION_FLAG_ACTIVE;
       switchRelais(port, RELAIS_ON);
 
 #ifdef DO_LOG
@@ -1684,7 +1701,6 @@ void alwaysOn(int timerNo, int port)
       if ( (tblEntry[port].actionFlag_2 & ACTION_FLAG_ALWAYS_ON) == 0 )
       {
         tblEntry[port].actionFlag_2 |= ACTION_FLAG_ALWAYS_ON;
-        tblEntry[port].actionFlag_2 |= ACTION_FLAG_ACTIVE;
         switchRelais(port, RELAIS_ON);
 
 #ifdef DO_LOG
@@ -1721,7 +1737,6 @@ void alwaysOff(int timerNo, int port)
     if ( (tblEntry[port].actionFlag_1 & ACTION_FLAG_ALWAYS_OFF) == 0 )
     {
       tblEntry[port].actionFlag_1 |= ACTION_FLAG_ALWAYS_OFF;
-      tblEntry[port].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
       switchRelais(port, RELAIS_OFF);
 
 #ifdef DO_LOG
@@ -1740,7 +1755,6 @@ void alwaysOff(int timerNo, int port)
       if ( (tblEntry[port].actionFlag_2 & ACTION_FLAG_ALWAYS_OFF) == 0 )
       {
         tblEntry[port].actionFlag_2 |= ACTION_FLAG_ALWAYS_OFF;
-        tblEntry[port].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
         switchRelais(port, RELAIS_OFF);
 
 #ifdef DO_LOG
@@ -1787,6 +1801,17 @@ int check4Action( void )
   //  for( i = 0; i < MAX_ACTION_TABLE_LINES; i++ )
   for ( i = 0; i < CONNECTED_RELAIS; i++ )
   {
+
+
+#ifdef DO_LOG
+  if ( !beQuiet )
+  {
+Logger.Log(LOGLEVEL_DEBUG," [%d] Enable: %d, mode: %s, hr1from: %s min1from: %s hr1to: %s min1to: %s hr2from: %s min2from: %s hr2to: %s min2to: %s \n",
+	i, tblEntry[i].enabled_1, tblEntry[i].mode.c_str(), tblEntry[i].hourFrom_1.c_str(), tblEntry[i].minuteFrom_1.c_str(),
+tblEntry[i].hourTo_1.c_str(), tblEntry[i].minuteTo_1.c_str(), tblEntry[i].hourFrom_2.c_str(), tblEntry[i].minuteFrom_2.c_str(),
+tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() ); 
+  }
+#endif // DO_LOG
 
     if ( tblEntry[i].enabled_1 )
     {
@@ -1838,7 +1863,6 @@ int check4Action( void )
 
           if ( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) != 0 )
           {
-            tblEntry[i].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_OFF);
 
 #ifdef DO_LOG
@@ -1912,7 +1936,6 @@ int check4Action( void )
 
           if ( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) == 0 )
           {
-            tblEntry[i].actionFlag_2 |= ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_ON);
 
 #ifdef DO_LOG
@@ -1938,7 +1961,6 @@ int check4Action( void )
 
           if ( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) != 0 )
           {
-            tblEntry[i].actionFlag_2 &= ~ACTION_FLAG_ACTIVE;
             switchRelais(i, RELAIS_OFF);
 
 #ifdef DO_LOG
@@ -2015,85 +2037,85 @@ int handleUpdate( void )
   httpCode = http.GET();
   if (httpCode == HTTP_CODE_OK)
   {
-    // #ifdef DO_LOG
+#ifdef DO_LOG
     if ( !beQuiet )
     {
       Logger.Log(LOGLEVEL_DEBUG, (const char*) "marker file %s exists\n", markerFile.c_str());
     }
-    // #endif // DO_LOG
+#endif // DO_LOG
 
     http.end();
     lastNumber++;
     storeUpdateInfo();
 
-    // #ifdef DO_LOG
+#ifdef DO_LOG
     if ( !beQuiet )
     {
       Logger.Log(LOGLEVEL_DEBUG, (const char*) "Handle update, next firmware is: %s\n", newFirmwareFile.c_str());
     }
-    // #endif // DO_LOG
+#endif // DO_LOG
     retVal = ESPhttpUpdate.update(newFirmwareFile.c_str());
 
     //        retVal = ESPhttpUpdate.update(newFirmwareFile.c_str());
 
-    // #ifdef DO_LOG
+#ifdef DO_LOG
     if ( !beQuiet )
     {
       Logger.Log(LOGLEVEL_DEBUG, (const char*) "Update done retval was %x\n", retVal);
     }
-    // #endif // DO_LOG
+#endif // DO_LOG
 
 
     //        switch( (retVal = ESPhttpUpdate.update(newFirmwareFile.c_str())) )
     switch ( retVal )
     {
       case HTTP_UPDATE_FAILED:
-        // #ifdef DO_LOG
+#ifdef DO_LOG
         if ( !beQuiet )
         {
           Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_FAILED! Error (%d): %s\n",
                      ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
         }
-        // #endif // DO_LOG
+#endif // DO_LOG
         break;
       case HTTP_UPDATE_NO_UPDATES:
         //                lastNumber++;
         //                storeUpdateInfo();
-        // #ifdef DO_LOG
+#ifdef DO_LOG
         if ( !beQuiet )
         {
           Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_NO_UPDATES\n");
         }
-        // #endif // DO_LOG
+#endif // DO_LOG
         break;
       case HTTP_UPDATE_OK:
         //                lastNumber++;
         //                storeUpdateInfo();
-        // #ifdef DO_LOG
+#ifdef DO_LOG
         if ( !beQuiet )
         {
           Logger.Log(LOGLEVEL_DEBUG, (const char*) "HTTP_UPDATE_OK - lastNumber = %d\n", lastNumber);
         }
-        // #endif // DO_LOG
+#endif // DO_LOG
         break;
       default:
-        // #ifdef DO_LOG
+#ifdef DO_LOG
         if ( !beQuiet )
         {
           Logger.Log(LOGLEVEL_DEBUG, (const char*) "Unknown retval %d\n", (int) retVal);
         }
-        // #endif // DO_LOG
+#endif // DO_LOG
         break;
     }
   }
   else
   {
-    // #ifdef DO_LOG
+#ifdef DO_LOG
     if ( !beQuiet )
     {
       Logger.Log(LOGLEVEL_DEBUG, (const char*) "NO marker file %s\n", markerFile.c_str());
     }
-    // #endif // DO_LOG
+#endif // DO_LOG
 
     http.end();
   }
@@ -2155,7 +2177,7 @@ void loop()
     check4Action();
     delay(2);
 
-    handleUpdate(); // <- RAUS!!
+//    handleUpdate(); // <- RAUS!!
   }
   else
   {
