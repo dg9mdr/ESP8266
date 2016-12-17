@@ -24,6 +24,13 @@
 //   #define FACTORY_WLAN_SSID to YOUR SSID
 //   #define FACTORY_WLAN_PASSPHRASE to YOUR PASSPHRASE for access
 //
+//   If using a PCF8574 as portexpander, set ESP_HAS_PCF8574 (see below)
+//   If you have driectly connected GPIO00/GPIO02 as I/Os unsing e.g.
+//   a trsnsitors as an amplifier, unset ESP_HAS_PCF8574.
+//   In addition, you have to take care whether your logic is active HIGH
+//   or active LOW ( as in case of the PCF8574 ). For that you have to
+//   set RELAIS_ON and RELAIS_OFF to the proper values.
+
 //   The module connects to the specified WLAN as a WiFi-client. After
 //   that, it requests the current date an time via network time protocol
 //   from a specific NTP-server.
@@ -52,6 +59,7 @@
 //     const int RED = 15;
 //     const int GREEN = 12;
 //     const int BLUE = 13;
+//   if using such a board, set IS_WITTY_MODULE
 //
 // ************************************************************************
 //
@@ -70,6 +78,11 @@
 //
 #define BE_QUIET			false
 bool beQuiet;
+//
+// If you are using a witty module, define this to use the RGB-LED 
+// as a status LED
+// #define IS_WITTY_MODULE
+#undef IS_WITTY_MODULE
 //
 //
 // ************************************************************************
@@ -348,15 +361,14 @@ dsEeprom eeprom;
 struct _action_entry {
   String   name;
   String   mode;
+  short    actionFlag;
   bool     enabled_1;
-  short    actionFlag_1;
   String   hourFrom_1;
   String   minuteFrom_1;
   String   hourTo_1;
   String   minuteTo_1;
   bool     extEnable_1;
   bool     enabled_2;
-  short    actionFlag_2;
   String   hourFrom_2;
   String   minuteFrom_2;
   String   hourTo_2;
@@ -727,8 +739,7 @@ void resetActionFlags( void )
     }
 #endif // DO_LOG
 
-    tblEntry[currLine].actionFlag_1 = ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION;
-    tblEntry[currLine].actionFlag_2 = ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION;
+    tblEntry[currLine].actionFlag = ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION;
   }
 
 }
@@ -1144,12 +1155,12 @@ void toggleRelais(int port)
 void switchRelais(int port, int newStatus)
 {
 
-// #ifdef DO_LOG
-// if ( !beQuiet )
-// {
-//    Logger.Log(LOGLEVEL_DEBUG, "switch relais[%d] to %d\n", port, newStatus);
-// }
-// #endif // DO_LOG
+#ifdef DO_LOG
+  if ( !beQuiet )
+  {
+    Logger.Log(LOGLEVEL_DEBUG, "switch relais[%d] to %d\n", port, newStatus);  
+  }
+#endif // DO_LOG
 
 #ifdef ESP_HAS_PCF8574
   PCF_38.write(port, newStatus);
@@ -1157,15 +1168,64 @@ void switchRelais(int port, int newStatus)
   digitalWrite( port, newStatus );
 #endif // ESP_HAS_PCF8574
 
-  if( newStatus == RELAIS_OFF)
+  if( newStatus == RELAIS_ON )
   {
-    tblEntry[port].actionFlag_1 &= ~ACTION_FLAG_ACTIVE;
+    tblEntry[port].actionFlag |= ACTION_FLAG_ACTIVE;
   }
   else
   {
-    tblEntry[port].actionFlag_1 |= ACTION_FLAG_ACTIVE;
+    tblEntry[port].actionFlag &= ~ACTION_FLAG_ACTIVE;
   }
 
+
+}
+//
+// ************************************************************************
+//
+// ---------- void alwaysOn( int timerNo, int port )
+//
+// ************************************************************************
+//
+void alwaysOn(int port)
+{
+
+#ifdef DO_LOG
+  if ( !beQuiet )
+  {
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "... set always on for port %d\n",port);
+  }
+#endif // DO_LOG
+
+  if ( (tblEntry[port].actionFlag & ACTION_FLAG_ALWAYS_ON) == 0 )
+  {
+    tblEntry[port].actionFlag |= ACTION_FLAG_ALWAYS_ON;
+    switchRelais(port, RELAIS_ON);
+
+  }
+}
+
+//
+// ************************************************************************
+//
+// ---------- void alwaysOff( int timerNo, int port )
+//
+// ************************************************************************
+//
+void alwaysOff(int port)
+{
+
+#ifdef DO_LOG
+  if ( !beQuiet )
+  {
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "... set always off for port %d\n", port);
+  }
+#endif // DO_LOG
+
+  if ( (tblEntry[port].actionFlag & ACTION_FLAG_ALWAYS_OFF) == 0 )
+  {
+    tblEntry[port].actionFlag |= ACTION_FLAG_ALWAYS_OFF;
+    switchRelais(port, RELAIS_OFF);
+  }
 }
 
 //
@@ -1197,23 +1257,24 @@ void startupActions( void )
 
   for ( i = 0; i < CONNECTED_RELAIS; i++ )
   {
-    tblEntry[i].actionFlag_1 = (ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION);
-    tblEntry[i].actionFlag_2 = (ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION);
+    tblEntry[i].actionFlag = (ACTION_FLAG_INACTIVE | ACTION_FLAG_NO_ACTION);
 
 #ifdef DO_LOG
     if ( !beQuiet )
     {
-      Logger.Log(LOGLEVEL_DEBUG, (const char*) "setting port %d to LOW!\n", i );
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "flasg cleared, set port %d to LOW!\n", i );
     }
 #endif // DO_LOG
 
     switchRelais(i, RELAIS_OFF);
 
-    if ( tblEntry[i].enabled_1 )
+    if ( tblEntry[i].mode.equalsIgnoreCase("auto") )
     {
+      // if in AUTO mode
 
-      if ( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      if ( tblEntry[i].enabled_1 )
       {
+        // time 1 is enabled
 
         chkMinutesFrom = (atoi(tblEntry[i].hourFrom_1.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_1.c_str());
         chkMinutesTo = (atoi(tblEntry[i].hourTo_1.c_str()) * 60) + atoi(tblEntry[i].minuteTo_1.c_str());
@@ -1221,7 +1282,7 @@ void startupActions( void )
         if ( chkMinutesTo < chkMinutesFrom )
         {
           // time wrap
-          wrapMinutes = (23 * 60) + 59;
+          wrapMinutes = (24*60);
 #ifdef DO_LOG
           if ( !beQuiet )
           {
@@ -1229,61 +1290,27 @@ void startupActions( void )
           }
 #endif // DO_LOG
 
-          if ( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
-          {
-            //
-            if ( nowMinutes > chkMinutesFrom )
-            {
-              // set this entry to active
+          chkMinutesTo += wrapMinutes;
+
+        }
+
+        if ( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
+        {
 #ifdef DO_LOG
-              if ( !beQuiet )
-              {
-                Logger.Log(LOGLEVEL_DEBUG,
-                           (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
-                           nowMinutes, chkMinutesFrom, chkMinutesTo );
-                Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
-              }
+          if ( !beQuiet )
+          {
+            Logger.Log(LOGLEVEL_DEBUG,
+                       (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 1 ... starting action\n",
+                       nowMinutes, chkMinutesFrom, chkMinutesTo );
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
+          }
 #endif // DO_LOG
 
-              switchRelais(i, RELAIS_ON);
-            }
-          }
-        }
-        else
-        {
-          if ( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
-          {
-#ifdef DO_LOG
-            if ( !beQuiet )
-            {
-              Logger.Log(LOGLEVEL_DEBUG,
-                         (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 1 ... starting action\n",
-                         nowMinutes, chkMinutesFrom, chkMinutesTo );
-              Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
-            }
-#endif // DO_LOG
-
-            switchRelais(i, RELAIS_ON);
-          }
+          switchRelais(i, RELAIS_ON);
         }
       }
-      else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
-      {
-        if ( tblEntry[i].mode.equalsIgnoreCase("on") )
-        {
-          alwaysOn(1, i);
-        }
-        else
-        {
-          alwaysOff(1, i);
-        }
-      }
-    }
 
-    if ( tblEntry[i].enabled_2 )
-    {
-
-      if ( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      if ( tblEntry[i].enabled_2 )
       {
 
         chkMinutesFrom = (atoi(tblEntry[i].hourFrom_2.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_2.c_str());
@@ -1292,7 +1319,7 @@ void startupActions( void )
         if ( chkMinutesTo < chkMinutesFrom )
         {
           // time wrap
-          wrapMinutes = (23 * 60) + 59;
+          wrapMinutes = 24 * 60;
 #ifdef DO_LOG
           if ( !beQuiet )
           {
@@ -1300,37 +1327,18 @@ void startupActions( void )
           }
 #endif // DO_LOG
 
-          if ( nowMinutes < chkMinutesTo || nowMinutes < wrapMinutes )
-          {
-            //
-            if ( nowMinutes > chkMinutesFrom )
-            {
-              // set this entry to active
-#ifdef DO_LOG
-              if ( !beQuiet )
-              {
-                Logger.Log(LOGLEVEL_DEBUG,
-                           (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
-                           nowMinutes, chkMinutesFrom, chkMinutesTo );
-                Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
-              }
-#endif // DO_LOG
-
-              switchRelais(i, RELAIS_ON);
-            }
-          }
+          chkMinutesTo += wrapMinutes;
         }
-        else
+
+        if ( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
         {
-          if ( nowMinutes >= chkMinutesFrom && nowMinutes < chkMinutesTo )
-          {
+          // set this entry to active
 #ifdef DO_LOG
             if ( !beQuiet )
             {
               Logger.Log(LOGLEVEL_DEBUG,
                          (const char*) "Current time(%d) is after Begin(%d) but before End(%d) of time 2 ... starting action\n",
                          nowMinutes, chkMinutesFrom, chkMinutesTo );
-
               Logger.Log(LOGLEVEL_DEBUG, (const char*) "switch port %d back to HIGH!\n", i );
             }
 #endif // DO_LOG
@@ -1338,20 +1346,17 @@ void startupActions( void )
             switchRelais(i, RELAIS_ON);
           }
         }
-      }
-      else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+
+    }
+    else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+    {
+      if ( tblEntry[i].mode.equalsIgnoreCase("on") )
       {
-        if ( tblEntry[i].mode.equalsIgnoreCase("on") )
-        {
-          alwaysOn(2, i);
-        }
-        else
-        {
-          if ( tblEntry[i].mode.equalsIgnoreCase("off") )
-          {
-            alwaysOff(2, i);
-          }
-        }
+        alwaysOn(i);
+      }
+      else
+      {
+        alwaysOff(i);
       }
     }
   }
@@ -1374,13 +1379,11 @@ void setup()
   unsigned long crcRead;
   unsigned long lastMillis;
 
+#ifdef IS_WITTY_MODULE
   // witty pins for integrated RGB LED
   const int RED = 15;
   const int GREEN = 12;
   const int BLUE = 13;
-
-  IPAddress localIP;
-  beQuiet = BE_QUIET;
 
   pinMode(RED, OUTPUT);
   pinMode(GREEN, OUTPUT);
@@ -1389,6 +1392,12 @@ void setup()
   analogWrite(RED, 0 );
   analogWrite(GREEN, 127);
   analogWrite(BLUE, 0);
+#endif // IS_WITTY_MODULE
+
+
+  IPAddress localIP;
+  beQuiet = BE_QUIET;
+
 
   Serial.begin(SERIAL_BAUD);
   delay(10);
@@ -1420,8 +1429,11 @@ void setup()
   {
     if ( eeprom.isValid() )
     {
+#ifdef IS_WITTY_MODULE
       analogWrite(GREEN, 0);
       analogWrite(BLUE, 127);
+#endif // IS_WITTY_MODULE
+
 
 #ifdef DO_LOG
       Logger.Log(LOGLEVEL_DEBUG, (const char*) "eeprom content is valid!\n");
@@ -1447,9 +1459,11 @@ void setup()
         }
 #endif // DO_LOG
 
+#ifdef IS_WITTY_MODULE
         analogWrite(RED, 0 );
         analogWrite(GREEN, 127);
         analogWrite(BLUE, 0);
+#endif // IS_WITTY_MODULE
 
         restoreAdminSettings();
         restoreAddSysvars();
@@ -1458,9 +1472,11 @@ void setup()
       }
       else
       {
+#ifdef IS_WITTY_MODULE
         analogWrite(RED, 127 );
         analogWrite(GREEN, 0);
         analogWrite(BLUE, 0);
+#endif // IS_WITTY_MODULE
 
         eeprom.wipe();
         resetAdminSettings2Default();
@@ -1476,9 +1492,11 @@ void setup()
     }
     else
     {
+#ifdef IS_WITTY_MODULE
       analogWrite(RED, 127 );
       analogWrite(GREEN, 0);
       analogWrite(BLUE, 0);
+#endif // IS_WITTY_MODULE
 
       eeprom.wipe();
       resetAdminSettings2Default();
@@ -1494,9 +1512,11 @@ void setup()
   }
   else
   {
+#ifdef IS_WITTY_MODULE
     analogWrite(RED, 127 );
     analogWrite(GREEN, 0);
     analogWrite(BLUE, 0);
+#endif // IS_WITTY_MODULE
 
     eeprom.wipe();
     resetAdminSettings2Default();
@@ -1536,9 +1556,11 @@ void setup()
     }
   }
 
+#ifdef IS_WITTY_MODULE
   analogWrite(RED, 0 );
   analogWrite(GREEN, 127);
   analogWrite(BLUE, 0);
+#endif // IS_WITTY_MODULE
 
 #ifdef DO_LOG
   if ( !beQuiet )
@@ -1659,116 +1681,67 @@ void scanIIC()
     Serial.println("done\n");
 }
 
-//
-// ************************************************************************
-//
-// ---------- void alwaysOn( int timerNo, int port )
-//
-// ************************************************************************
-//
-void alwaysOn(int timerNo, int port)
+
+bool isValidHour( const char* hour )
 {
-
-#ifdef DO_LOG
-  if ( !beQuiet )
-  {
-    Logger.Log(LOGLEVEL_DEBUG, (const char*) "... check always on for port %d and timer = %d, flag #1 is %d, flag #2 is %d\n",
-               port, timerNo, tblEntry[port].actionFlag_1, tblEntry[port].actionFlag_2);
-  }
-#endif // DO_LOG
-
-
-  if ( timerNo == 1 )
-  {
-    if ( (tblEntry[port].actionFlag_1 & ACTION_FLAG_ALWAYS_ON) == 0 )
+    bool retVal = false;
+    if( hour != NULL )
     {
-      tblEntry[port].actionFlag_1 |= ACTION_FLAG_ALWAYS_ON;
-      switchRelais(port, RELAIS_ON);
-
-#ifdef DO_LOG
-      if ( !beQuiet )
-      {
-        Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #1 is manual ALWAYS ON\n", port);
-      }
-#endif // DO_LOG
-
-    }
-  }
-  else
-  {
-    if ( timerNo == 2 )
-    {
-      if ( (tblEntry[port].actionFlag_2 & ACTION_FLAG_ALWAYS_ON) == 0 )
-      {
-        tblEntry[port].actionFlag_2 |= ACTION_FLAG_ALWAYS_ON;
-        switchRelais(port, RELAIS_ON);
-
-#ifdef DO_LOG
-        if ( !beQuiet )
+        if( strlen(hour) >= 2 )
         {
-          Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #2 is manual ALWAYS ON\n", port);
-        }
-#endif // DO_LOG
+            retVal = false;
 
-      }
+            if( hour[0] >= '0' && hour[0] <= '9' &&
+                hour[1] >= '0' && hour[1] <= '9' )
+            {
+                if( atoi(hour) <= 23 )
+                {
+                    retVal = true;
+                }
+            }
+        }
+        else
+        {
+            if( hour[0] >= '0' && hour[0] <= '9' )
+            {
+                retVal = true;
+            }
+        }
     }
-  }
+    return( retVal);
 }
 
-//
-// ************************************************************************
-//
-// ---------- void alwaysOff( int timerNo, int port )
-//
-// ************************************************************************
-//
-void alwaysOff(int timerNo, int port)
+
+bool isValidMinute( const char* minute )
 {
-
-#ifdef DO_LOG
-  if ( !beQuiet )
-  {
-    Logger.Log(LOGLEVEL_DEBUG, (const char*) "... check always off for port %d and timer = %d, flag #1 is %d, flag #2 is\n", port, timerNo, tblEntry[port].actionFlag_1, tblEntry[port].actionFlag_2);
-  }
-#endif // DO_LOG
-
-  if ( timerNo == 1 )
-  {
-    if ( (tblEntry[port].actionFlag_1 & ACTION_FLAG_ALWAYS_OFF) == 0 )
+    bool retVal = false;
+    if( minute != NULL )
     {
-      tblEntry[port].actionFlag_1 |= ACTION_FLAG_ALWAYS_OFF;
-      switchRelais(port, RELAIS_OFF);
 
-#ifdef DO_LOG
-      if ( !beQuiet )
-      {
-        Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #1 is manual ALWAYS OFF\n", port);
-      }
-#endif // DO_LOG
-
-    }
-  }
-  else
-  {
-    if ( timerNo == 2 )
-    {
-      if ( (tblEntry[port].actionFlag_2 & ACTION_FLAG_ALWAYS_OFF) == 0 )
-      {
-        tblEntry[port].actionFlag_2 |= ACTION_FLAG_ALWAYS_OFF;
-        switchRelais(port, RELAIS_OFF);
-
-#ifdef DO_LOG
-        if ( !beQuiet )
+        if( strlen(minute) >= 2 )
         {
-          Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #2 is manual ALWAYS OFF\n", port);
+            retVal = false;
+
+            if( minute[0] >= '0' && minute[0] <= '9' &&
+                minute[1] >= '0' && minute[1] <= '9' )
+            {
+                if( atoi(minute) <= 59 )
+                {
+                    retVal = true;
+                }
+            }
         }
-#endif // DO_LOG
+        else
+        {
+            if( minute[0] >= '0' && minute[0] <= '9' )
+            {
+                retVal = true;
+            }
+        }
 
-      }
     }
-  }
+    return( retVal);
 }
-
 
 //
 // ************************************************************************
@@ -1778,18 +1751,18 @@ void alwaysOff(int timerNo, int port)
 // ************************************************************************
 //
 
-int check4Action( void )
+int check4Action( int nowMinutes )
 {
   int i;
   int retVal = 0;
   time_t secsSinceEpoch;
-  short nowMinutes;
+//  short nowMinutes;
   short chkMinutesFrom, chkMinutesTo;
   time_t utc;
 
-  utc = now();
-  secsSinceEpoch = CE.toLocal(utc, &tcr);
-  nowMinutes = ( hour(secsSinceEpoch) * 60 ) + minute(secsSinceEpoch);
+//  utc = now();
+//  secsSinceEpoch = CE.toLocal(utc, &tcr);
+//  nowMinutes = ( hour(secsSinceEpoch) * 60 ) + minute(secsSinceEpoch);
 
 #ifdef DO_LOG
   if ( !beQuiet )
@@ -1822,7 +1795,7 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
         chkMinutesFrom = (atoi(tblEntry[i].hourFrom_1.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_1.c_str());
         chkMinutesTo = (atoi(tblEntry[i].hourTo_1.c_str()) * 60) + atoi(tblEntry[i].minuteTo_1.c_str());
 
-        if ( chkMinutesFrom == nowMinutes )
+        if ( nowMinutes >= chkMinutesFrom )
         {
 #ifdef DO_LOG
           if ( !beQuiet )
@@ -1830,14 +1803,12 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
             Logger.Log(LOGLEVEL_DEBUG,
                        (const char*) "action is time 1 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
                        tblEntry[i].hourFrom_1.c_str(), tblEntry[i].minuteFrom_1.c_str(),
-                       chkMinutesFrom, i, tblEntry[i].actionFlag_1);
+                       chkMinutesFrom, i, tblEntry[i].actionFlag);
           }
 #endif // DO_LOG
 
-          if ( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) == 0 )
+          if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) == 0 )
           {
-            tblEntry[i].actionFlag_1 |= ACTION_FLAG_ACTIVE;
-
             switchRelais(i, RELAIS_ON);
 
 #ifdef DO_LOG
@@ -1849,7 +1820,7 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
           }
         }
 
-        if (chkMinutesTo == nowMinutes )
+        if( nowMinutes >= chkMinutesTo )
         {
 #ifdef DO_LOG
           if ( !beQuiet )
@@ -1857,11 +1828,11 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
             Logger.Log(LOGLEVEL_DEBUG,
                        (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
                        tblEntry[i].hourTo_1.c_str(), tblEntry[i].minuteTo_1.c_str(),
-                       chkMinutesTo, i, tblEntry[i].actionFlag_1);
+                       chkMinutesTo, i, tblEntry[i].actionFlag);
           }
 #endif // DO_LOG
 
-          if ( (tblEntry[i].actionFlag_1 & ACTION_FLAG_ACTIVE) != 0 )
+          if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) != 0 )
           {
             switchRelais(i, RELAIS_OFF);
 
@@ -1894,13 +1865,13 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
 
         if ( tblEntry[i].mode.equalsIgnoreCase("on") )
         {
-          alwaysOn(1, i);
+          alwaysOn(i);
         }
         else
         {
           if ( tblEntry[i].mode.equalsIgnoreCase("off") )
           {
-            alwaysOff(1, i);
+            alwaysOff(i);
           }
         }
       }
@@ -1922,7 +1893,7 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
         chkMinutesFrom = (atoi(tblEntry[i].hourFrom_2.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_2.c_str());
         chkMinutesTo = (atoi(tblEntry[i].hourTo_2.c_str()) * 60) + atoi(tblEntry[i].minuteTo_2.c_str());
 
-        if (chkMinutesFrom == nowMinutes )
+        if( nowMinutes >= chkMinutesFrom )
         {
 #ifdef DO_LOG
           if ( !beQuiet )
@@ -1930,11 +1901,11 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
             Logger.Log(LOGLEVEL_DEBUG,
                        (const char*) "action is time 2 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
                        tblEntry[i].hourFrom_2.c_str(), tblEntry[i].minuteFrom_2.c_str(),
-                       chkMinutesFrom, i, tblEntry[i].actionFlag_2);
+                       chkMinutesFrom, i tblEntry[i].actionFlag);
           }
 #endif // DO_LOG
 
-          if ( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) == 0 )
+          if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) == 0 )
           {
             switchRelais(i, RELAIS_ON);
 
@@ -1947,7 +1918,7 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
           }
         }
 
-        if (chkMinutesTo == nowMinutes )
+        if( nowMinutes >= chkMinutesTo )
         {
 #ifdef DO_LOG
           if ( !beQuiet )
@@ -1955,11 +1926,11 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
             Logger.Log(LOGLEVEL_DEBUG,
                        (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
                        tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str(),
-                       chkMinutesTo, i, tblEntry[i].actionFlag_2);
+                       chkMinutesTo, i, tblEntry[i].actionFlag);
           }
 #endif // DO_LOG
 
-          if ( (tblEntry[i].actionFlag_2 & ACTION_FLAG_ACTIVE) != 0 )
+          if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) != 0 )
           {
             switchRelais(i, RELAIS_OFF);
 
@@ -1992,11 +1963,11 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
 
         if ( tblEntry[i].mode.equalsIgnoreCase("on") )
         {
-          alwaysOn(2, i);
+          alwaysOn(i);
         }
         else
         {
-          alwaysOff(2, i);
+          alwaysOff(i);
         }
       }
     }
@@ -2164,7 +2135,7 @@ void loop()
 
   server.handleClient();
 
-  if ( nowMinutes > minutesLastCheck )
+  if ( nowMinutes != minutesLastCheck )
   {
 #ifdef DO_LOG
     if ( !beQuiet )
@@ -2173,8 +2144,19 @@ void loop()
     }
 #endif // DO_LOG
 
+    if( minutesLastCheck == 0 )
+    {
+        check4Action(nowMinutes);
+    }
+    else
+    {
+        while( minutesLastCheck != nowMinutes )
+        {
+            minutesLastCheck++;
+            check4Action(minutesLastCheck);
+        }
+    }
     minutesLastCheck = nowMinutes;
-    check4Action();
     delay(2);
 
 //    handleUpdate(); // <- RAUS!!
@@ -2499,7 +2481,10 @@ void setupPage()
     }
 #endif // DO_LOG
 
-      tblEntry[i].hourFrom_1   = server.arg(formFieldName[KW_IDX_HFROM_1]);
+      if( isValidHour( server.arg(formFieldName[KW_IDX_HFROM_1]).c_str()) )
+      {
+          tblEntry[i].hourFrom_1   = server.arg(formFieldName[KW_IDX_HFROM_1]);
+      }
 
 #ifdef DO_LOG
     if ( !beQuiet )
@@ -2509,7 +2494,10 @@ void setupPage()
     }
 #endif // DO_LOG
 
-      tblEntry[i].minuteFrom_1 = server.arg(formFieldName[KW_IDX_MFROM_1]);
+      if( isValidMinute(server.arg(formFieldName[KW_IDX_MFROM_1]).c_str()) )
+      {
+          tblEntry[i].minuteFrom_1 = server.arg(formFieldName[KW_IDX_MFROM_1]);
+      }
 
 #ifdef DO_LOG
     if ( !beQuiet )
@@ -2519,7 +2507,10 @@ void setupPage()
     }
 #endif // DO_LOG
 
-      tblEntry[i].hourTo_1     = server.arg(formFieldName[KW_IDX_HTO_1]);
+      if( isValidHour( server.arg(formFieldName[KW_IDX_HTO_1]).c_str()) )
+      {
+          tblEntry[i].hourTo_1     = server.arg(formFieldName[KW_IDX_HTO_1]);
+      }
 
 #ifdef DO_LOG
     if ( !beQuiet )
@@ -2529,7 +2520,10 @@ void setupPage()
     }
 #endif // DO_LOG
 
-      tblEntry[i].minuteTo_1   = server.arg(formFieldName[KW_IDX_MTO_1]);
+      if( isValidMinute( server.arg(formFieldName[KW_IDX_MTO_1]).c_str()) )
+      {
+          tblEntry[i].minuteTo_1   = server.arg(formFieldName[KW_IDX_MTO_1]);
+      }
 
 #ifdef DO_LOG
     if ( !beQuiet )
@@ -2539,7 +2533,10 @@ void setupPage()
     }
 #endif // DO_LOG
 
-      tblEntry[i].hourFrom_2   = server.arg(formFieldName[KW_IDX_HFROM_2]);
+      if( isValidHour( server.arg(formFieldName[KW_IDX_HFROM_2]).c_str()) )
+      {
+          tblEntry[i].hourFrom_2   = server.arg(formFieldName[KW_IDX_HFROM_2]);
+      }
 
 #ifdef DO_LOG
     if ( !beQuiet )
@@ -2549,7 +2546,10 @@ void setupPage()
     }
 #endif // DO_LOG
 
-      tblEntry[i].minuteFrom_2 = server.arg(formFieldName[KW_IDX_MFROM_2]);
+      if( isValidMinute( server.arg(formFieldName[KW_IDX_MFROM_2]).c_str()) )
+      {
+          tblEntry[i].minuteFrom_2 = server.arg(formFieldName[KW_IDX_MFROM_2]);
+      }
 
 #ifdef DO_LOG
     if ( !beQuiet )
@@ -2559,7 +2559,10 @@ void setupPage()
     }
 #endif // DO_LOG
 
-      tblEntry[i].hourTo_2     = server.arg(formFieldName[KW_IDX_HTO_2]);
+      if( isValidHour( server.arg(formFieldName[KW_IDX_HTO_2]).c_str()) )
+      {
+          tblEntry[i].hourTo_2     = server.arg(formFieldName[KW_IDX_HTO_2]);
+      }
 
 #ifdef DO_LOG
     if ( !beQuiet )
@@ -2569,7 +2572,10 @@ void setupPage()
     }
 #endif // DO_LOG
 
-      tblEntry[i].minuteTo_2   = server.arg(formFieldName[KW_IDX_MTO_2]);
+      if( isValidMinute( server.arg(formFieldName[KW_IDX_MTO_2]).c_str()) )
+      {
+          tblEntry[i].minuteTo_2   = server.arg(formFieldName[KW_IDX_MTO_2]);
+      }
 
 #ifdef DO_LOG
     if ( !beQuiet )
@@ -2579,15 +2585,33 @@ void setupPage()
     }
 #endif // DO_LOG
 
-      tblEntry[i].enabled_1   = server.arg(formFieldName[KW_IDX_ENABLED_1]).equalsIgnoreCase("aktiv") ? true : false;
+
+      if( isValidHour( server.arg(formFieldName[KW_IDX_HFROM_1]).c_str()) &&
+          isValidMinute( server.arg(formFieldName[KW_IDX_MFROM_1]).c_str()) &&
+          isValidHour( server.arg(formFieldName[KW_IDX_HTO_1]).c_str()) &&
+          isValidMinute( server.arg(formFieldName[KW_IDX_MTO_1]).c_str()) )
+      {
+          tblEntry[i].enabled_1   = 
+                      server.arg(formFieldName[KW_IDX_ENABLED_1]).equalsIgnoreCase("aktiv") ? true : false;
 
 #ifdef DO_LOG
-    if ( !beQuiet )
-    {
-      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].enabled_1   = server.arg(\"%s\") -> %d\n", 
-                  i, formFieldName[KW_IDX_ENABLED_1].c_str(), tblEntry[i].enabled_1);
-    }
+        if ( !beQuiet )
+        {
+          Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].enabled_1   = server.arg(\"%s\") -> %d\n", 
+                      i, formFieldName[KW_IDX_ENABLED_1].c_str(), tblEntry[i].enabled_1);
+        }
 #endif // DO_LOG
+      }
+      else
+      {
+          tblEntry[i].enabled_1   = false;
+#ifdef DO_LOG
+        if ( !beQuiet )
+        {
+          Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].enabled_1   = FALSE - error in time spec\n", i);
+        }
+#endif // DO_LOG
+      }
       
       tblEntry[i].extEnable_1 = server.arg(formFieldName[KW_IDX_EXT_1]).equalsIgnoreCase("aktiv") ? true : false;
 
@@ -2599,15 +2623,27 @@ void setupPage()
     }
 #endif // DO_LOG
             
-      tblEntry[i].enabled_2   = server.arg(formFieldName[KW_IDX_ENABLED_2]).equalsIgnoreCase("aktiv") ? true : false;
+
+      if( isValidHour( server.arg(formFieldName[KW_IDX_HFROM_2]).c_str()) &&
+          isValidMinute( server.arg(formFieldName[KW_IDX_MFROM_2]).c_str()) &&
+          isValidHour( server.arg(formFieldName[KW_IDX_HTO_2]).c_str()) &&
+          isValidMinute( server.arg(formFieldName[KW_IDX_MTO_2]).c_str()) )
+      {
+          tblEntry[i].enabled_2   = 
+                    server.arg(formFieldName[KW_IDX_ENABLED_2]).equalsIgnoreCase("aktiv") ? true : false;
 
 #ifdef DO_LOG
-    if ( !beQuiet )
-    {
-      Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].enabled_2   = server.arg(\"%s\") -> %d\n", 
-                  i, formFieldName[KW_IDX_ENABLED_2].c_str(), tblEntry[i].enabled_2);
-    }
+        if ( !beQuiet )
+        {
+          Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].enabled_2   = server.arg(\"%s\") -> %d\n", 
+                      i, formFieldName[KW_IDX_ENABLED_2].c_str(), tblEntry[i].enabled_2);
+        }
 #endif // DO_LOG
+      }
+      else
+      {
+          Logger.Log( LOGLEVEL_DEBUG, (const char*) "tblEntry[%d].enabled_2   = FALSE - error in time spec\n", i);
+      }
       
       tblEntry[i].extEnable_2 = server.arg(formFieldName[KW_IDX_EXT_2]).equalsIgnoreCase("aktiv") ? true : false;
 
