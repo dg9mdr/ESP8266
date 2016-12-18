@@ -25,8 +25,8 @@
 //   #define FACTORY_WLAN_PASSPHRASE to YOUR PASSPHRASE for access
 //
 //   If using a PCF8574 as portexpander, set ESP_HAS_PCF8574 (see below)
-//   If you have driectly connected GPIO00/GPIO02 as I/Os unsing e.g.
-//   a trsnsitors as an amplifier, unset ESP_HAS_PCF8574.
+//   If you have directly connected GPIO00/GPIO02 as I/Os unsing e.g.
+//   a transitor as an amplifier, unset ESP_HAS_PCF8574.
 //   In addition, you have to take care whether your logic is active HIGH
 //   or active LOW ( as in case of the PCF8574 ). For that you have to
 //   set RELAIS_ON and RELAIS_OFF to the proper values.
@@ -69,6 +69,11 @@
 // 2016/10/28: initial version
 // 2016/12/08: added flag handling
 // 2016/12/12: added functions for web-update
+// 2016/12/18: several cleanups and styling changes
+// 2016/12/18: added some verifications on setup page
+// 2016/12/18: optimized for size (must be less than 50% of an ESP-01)
+// 2016/12/18: implemented Web-API
+// 2016/12/18: UDP client and server functionality for multicasting
 //
 //
 // ************************************************************************
@@ -81,8 +86,8 @@ bool beQuiet;
 //
 // If you are using a witty module, define this to use the RGB-LED 
 // as a status LED
-// #define IS_WITTY_MODULE
-#undef IS_WITTY_MODULE
+#define IS_WITTY_MODULE
+// #undef IS_WITTY_MODULE
 //
 //
 // ************************************************************************
@@ -97,6 +102,7 @@ bool beQuiet;
 // https://github.com/JChristensen/Timezone
 #include "PCF8574.h"
 #include <Wire.h>
+#include <Hash.h>
 
 #include <ESP8266HTTPClient.h>
 #include <ESP8266httpUpdate.h>
@@ -250,6 +256,8 @@ String wwwServerIP;
 String wwwServerPort;
 // Nodename - not currently in use. Part of standard data.
 String nodeName;
+// SHA1 - hash used as api key
+String apiKey;
 // Password to get access to admin page. Not currently in use.
 String adminPasswd;
 //
@@ -420,11 +428,16 @@ String formFieldName[NUM_SETUP_FORM_FIELDS];
 #endif
 
 // ************************************************************************
-// setup local port for UDP communication
+// setup local port for NTP communication
 // ************************************************************************
 //
 unsigned int localUDPPort =	DEFAULT_UDP_LISTENPORT;
 //
+// A UDP instance to let us send and receive packets over UDP
+WiFiUDP multicastInstance;
+// Multicast declarations
+IPAddress multicastIP(239, 0, 0, 57);
+unsigned int multicastPort = 12345;      // local port to listen on
 //
 // ************************************************************************
 // define clock an data pin for iic
@@ -1362,6 +1375,40 @@ void startupActions( void )
   }
 }
 
+//
+// ------------------------------------------------------------------------
+//
+const int RED = 15;
+const int GREEN = 12;
+const int BLUE = 13;
+//
+void LEDOff()
+{
+    analogWrite(RED, 0 );
+    analogWrite(GREEN, 0);
+    analogWrite(BLUE, 0);
+}
+//
+void LEDRed( )
+{
+    analogWrite(RED, 127 );
+    analogWrite(GREEN, 0);
+    analogWrite(BLUE, 0);
+}
+
+void LEDGreen( )
+{
+    analogWrite(RED, 0 );
+    analogWrite(GREEN, 127);
+    analogWrite(BLUE, 0);
+}
+
+void LEDBlue( )
+{
+    analogWrite(RED, 0 );
+    analogWrite(GREEN, 0);
+    analogWrite(BLUE, 127);
+}
 
 //
 // ************************************************************************
@@ -1372,12 +1419,14 @@ void startupActions( void )
 //
 #define FIRMWARE_CHECK   "0.0.1"
 #define AUTO_RECONNECT_SECONDS   120
+
 void setup()
 {
 
   unsigned long crcCalc;
   unsigned long crcRead;
   unsigned long lastMillis;
+  String multiIP;
 
 #ifdef IS_WITTY_MODULE
   // witty pins for integrated RGB LED
@@ -1390,7 +1439,7 @@ void setup()
   pinMode(BLUE, OUTPUT);
 
   analogWrite(RED, 0 );
-  analogWrite(GREEN, 127);
+  analogWrite(GREEN, 0);
   analogWrite(BLUE, 0);
 #endif // IS_WITTY_MODULE
 
@@ -1402,6 +1451,9 @@ void setup()
   Serial.begin(SERIAL_BAUD);
   delay(10);
 
+  generateNodename();
+  apiKey = sha1(nodeName);
+ 
   Logger.Init(LOGLEVEL_DEBUG, &Serial);
 
 #ifdef DO_LOG
@@ -1409,6 +1461,8 @@ void setup()
   Logger.Log(LOGLEVEL_DEBUG, (const char*) "EEPROM_ACTION_TBL_ENTRY_LENGTH = %d\n", EEPROM_ACTION_TBL_ENTRY_LENGTH );
   Logger.Log(LOGLEVEL_DEBUG, (const char*) "EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
   Logger.Log(LOGLEVEL_DEBUG, (const char*) "Current firmware is = %s\n", FIRMWARE_CHECK );
+
+  Logger.Log(LOGLEVEL_DEBUG, (const char*) "UUID(SHA1) is: %s\n", apiKey.c_str());
 #endif // DO_LOG
 
 #ifdef ESP_HAS_PCF8574
@@ -1604,6 +1658,16 @@ void setup()
   }
 #endif // DO_LOG
 
+    multicastInstance.beginMulticast(WiFi.localIP(), multicastIP, multicastPort);
+    multiIP = multicastIP.toString();
+
+#ifdef DO_LOG
+  if ( !beQuiet )
+  {
+    Serial.print("Multicast listener started at : %s:%d\n", multiIP.c_str(), multicastPort );
+  }
+#endif // DO_LOG
+
   server = ESP8266WebServer( (unsigned long) wwwServerPort.toInt() );
   server.on("/", setupPage);
   server.on("/api", apiPage);
@@ -1626,6 +1690,8 @@ void setup()
     Logger.Log(LOGLEVEL_DEBUG, (const char*) "Startup actions ...\n");
   }
 #endif // DO_LOG
+
+  LEDGreen();
 
   startupActions();
 
@@ -1988,6 +2054,20 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
 //
 // ************************************************************************
 //
+// ---------- int handleUpdateEx()
+//
+// ************************************************************************
+//
+int handleUpdateEx( const char* updateUrl )
+{
+    t_httpUpdate_return retVal;
+
+    return( retVal );
+}
+
+//
+// ************************************************************************
+//
 // ---------- int handleUpdate()
 //
 // ************************************************************************
@@ -2097,40 +2177,94 @@ int handleUpdate( void )
 //
 // ************************************************************************
 //
+// ---------- int processUDPRequest( const char* requestFrom, char packetBuffer[], int payloadLength )
+//
+// ************************************************************************
+//
+int processUDPRequest( const char* requestFrom, char packetBuffer[], int payloadLength )
+{
+  int retVal = E_SUCCESS;
+
+  return( retVal );
+}
+
+//
+// ************************************************************************
+//
 // ---------- void loop()
 //
 // ************************************************************************
 //
+#define HOUR_4_UPDATE_CHECK   9
 void loop()
 {
-  static short lastUpdateCheck;
+  static short wdayLastUpdateCheck;
+  static short hourLastUpdateCheck;
   time_t secsSinceEpoch;
   short nowMinutes;
   static short minutesLastCheck;
+  static int noBytes, message_size;
+  static char packetBuffer[128];
   time_t utc;
+  String remoteIP;
+  IPAddress requestFromIP;
+
+// multiIP.c_str()
+
 
   utc = now();
   secsSinceEpoch = CE.toLocal(utc, &tcr);
   nowMinutes = ( hour(secsSinceEpoch) * 60 ) + minute(secsSinceEpoch);
 
-  // the weekday now (Sunday is day 1)
-  if ( weekday(secsSinceEpoch) != lastUpdateCheck )
+
+  noBytes= multicastInstance.parsePacket(); //// returns the size of the packet
+  if ( noBytes>0 && noBytes<64)
   {
+    requestFromIP = multicastInstance.remoteIP();
+    remoteIP = requestFromIP.toString();
+
 #ifdef DO_LOG
     if ( !beQuiet )
     {
-      Logger.Log(LOGLEVEL_DEBUG, (const char*) "loop: day has changed from %d to %d\n",
-                 lastUpdateCheck, weekday(secsSinceEpoch));
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "Multicast request received, size = %d\n", noBytes );
+        
+ //           multicastInstance.remoteIP()   
     }
 #endif // DO_LOG
 
-    //    if( handleUpdate() == HTTP_UPDATE_OK )
-    //    {
-    //        HTTP_UPDATE_FAILED
-    //        HTTP_UPDATE_NO_UPDATES
+    message_size=multicastInstance.read(packetBuffer,64); // read the packet into the buffer
 
-    //      lastUpdateCheck = weekday(secsSinceEpoch);
-    //    }
+    if (message_size>0)
+    {
+      packetBuffer[message_size]=0; //// null terminate
+
+      processUDPRequest( remoteIP.c_str(), packetBuffer, message_size );
+
+#ifdef DO_LOG
+      if ( !beQuiet )
+      {
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) " - data: %s\n", packetBuffer);
+      }
+#endif // DO_LOG
+    }
+
+  } 
+
+  // the weekday now (Sunday is day 1)
+  if ( weekday(secsSinceEpoch) != wdayLastUpdateCheck )
+  {
+    if( hour(secsSinceEpoch) == HOUR_4_UPDATE_CHECK )
+    {
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "loop: day has changed from %d to %d and time(%d) has come\n",
+                 wdayLastUpdateCheck, weekday(secsSinceEpoch), HOUR_4_UPDATE_CHECK);
+    }
+#endif // DO_LOG
+      handleUpdate();
+      wdayLastUpdateCheck = weekday(secsSinceEpoch);
+    }
   }
 
   server.handleClient();
@@ -2155,11 +2289,12 @@ void loop()
             minutesLastCheck++;
             check4Action(minutesLastCheck);
         }
+
+        handleUpdate();  // NACH TEST WIEDER RAUS!!
     }
     minutesLastCheck = nowMinutes;
     delay(2);
 
-//    handleUpdate(); // <- RAUS!!
   }
   else
   {
@@ -2679,7 +2814,7 @@ void setupPage()
   pageContent += "</head>\n";
 
   pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\">\n";
-  pageContent += "<div align=\"center\"><strong><h1>Gartenleuchten</h1></strong></div>\n";
+  pageContent += "<div align=\"center\"><strong><h1>WiFi Relais</h1></strong></div>\n";
 
 
   pageContent += "<div align=\"center\"><strong><h1>" + String(localIP.toString()) + "</h1></strong></div>\n";
@@ -2749,19 +2884,859 @@ void setupPage()
 //
 // ************************************************************************
 //
+// ---------- Web API processing
+//
+// ************************************************************************
+//
+//
+// ------------------------------------------------------------------------
+//
+// ---------- several global information needed to handle
+//            calls of the Web-API
+//
+// ------------------------------------------------------------------------
+//
+// valid values for some table fields
+//
+#define API_VALUE_ENABLE   "enable"
+#define API_VALUE_DISABLE  "disable"
+#define API_VALUE_ON       "on"
+#define API_VALUE_OFF      "off"
+#define API_VALUE_AUTO     "auto"
+
+//
+// valid api keys that may be sent 
+//
+#define NUM_API_KEYWORDS    13
+
+char *_apiKeywords[NUM_API_KEYWORDS] = {
+  "update",
+  "apikey",
+  "port",
+  "mode",
+  "from1",
+  "to1",
+  "time1",
+  "from2",
+  "to2",
+  "time2",
+  "ext1",
+  "ext2",
+  NULL
+};
+
+//
+// index for each keyword
+//
+#define API_KEYWORD_UPDATE    0
+#define API_KEYWORD_APIKEY    1
+#define API_KEYWORD_PORT      2
+#define API_KEYWORD_MODE      3
+#define API_KEYWORD_FROM1     4
+#define API_KEYWORD_TO1       5
+#define API_KEYWORD_TIME1     6
+#define API_KEYWORD_FROM2     7
+#define API_KEYWORD_TO2       8
+#define API_KEYWORD_TIME2     9
+#define API_KEYWORD_EXT1     10
+#define API_KEYWORD_EXT2     11
+
+//
+// update[=http://url:port/file}
+// apikey=xyz
+// port=1-8
+// mode[=on/off/auto]
+// from1[=12:12]
+// to1[=12:12]
+// time1[=enable/disable]
+// from2[=14:14]
+// to2[=14:14]
+// time2[=enable/disable]
+// ext1[=on/off/enable/disable]
+// ext2[=on/off/enable/disable]
+//
+
+
+//
+// resultcodes of api-calls
+//
+#define API_RESULT_SUCCESS              0
+#define API_MSG_SUCCESS               ":OK"
+#define API_RESULT_MISSING_PORT       119
+#define API_MSG_MISSING_PORT          ":MISSING ARGUMENT"
+#define API_RESULT_INVALID_MODE       120
+#define API_MSG_INVALID_MODE          ":INVALID MODE"
+#define API_RESULT_MISSING_TIMEVALUE  121
+#define API_MSG_MISSING_TIMEVALUE     ":MISSING TIME"
+#define API_RESULT_INVALID_TIMEVALUE  122
+#define API_MSG_INVALID_TIMEVALUE     ":INVALID TIME"
+#define API_RESULT_INVALID_MODE_TIME1 123
+#define API_MSG_INVALID_MODE_TIME1     ":INVALID MODE FOR TIME #1"
+#define API_RESULT_INVALID_MODE_TIME2 124
+#define API_MSG_INVALID_MODE_TIME2    ":INVALID MODE FOR TIME #2"
+#define API_RESULT_INVALID_MODE_EXT1  125
+#define API_MSG_INVALID_MODE_EXT1     "INVALID MODE FOR EXT #1"
+#define API_RESULT_INVALID_MODE_EXT2  126
+#define API_MSG_INVALID_MODE_EXT2     "INVALID MODE FOR EXT #2"
+#define API_RESULT_UNKNOWN_RESULTCODE 99
+#define API_MSG_UNKNOWN_RESULTCODE    ":UNKNOWN"
+
+
+
+
+//
+// ************************************************************************
+//
+// ---------- int postTime1Mode( int port )
+//
+// ************************************************************************
+//
+int postTime1Mode( int port )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    postResult( retVal );
+    pageContent += ":" +
+    pageContent += _apiKeywords[API_KEYWORD_TIME1];
+    pageContent += "=";
+
+    if( tblEntry[port].enabled_1 )
+    {
+        pageContent += API_VALUE_ENABLE;
+    }
+    else
+    {
+        pageContent += API_VALUE_DISABLE;
+    }
+    pageContent += "<br>\n";
+
+    return( retVal );
+}
+
+//
+// ************************************************************************
+//
+// ---------- int postTime2Mode( int port )
+//
+// ************************************************************************
+//
+int postTime2Mode( int port )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    postResult( retVal );
+    pageContent += ":" +
+    pageContent += _apiKeywords[API_KEYWORD_TIME2];
+    pageContent += "=";
+
+    if( tblEntry[port].enabled_2 )
+    {
+        pageContent += API_VALUE_ENABLE;
+    }
+    else
+    {
+        pageContent += API_VALUE_DISABLE;
+    }
+    pageContent += "<br>\n";
+
+    return( retVal );
+}
+
+//
+// ************************************************************************
+//
+// ---------- int postTimeFrom1( int port )
+//
+// ************************************************************************
+//
+int postTimeFrom1( int port )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    postResult( retVal );
+    pageContent += ":";
+    pageContent += _apiKeywords[API_KEYWORD_FROM1];
+    pageContent += "=";
+    pageContent += tblEntry[port].hourFrom_1;
+    pageContent += ":";
+    pageContent += tblEntry[port].minuteFrom_1;
+    pageContent += "<br>\n";
+
+    return( retVal );
+}
+                                        
+//
+// ************************************************************************
+//
+// ---------- int postTimeTo1( int port )
+//
+// ************************************************************************
+//
+int postTimeTo1( int port )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    postResult( retVal );
+    pageContent += ":";
+
+    pageContent += _apiKeywords[API_KEYWORD_TO1];
+    pageContent += "=";
+    pageContent += tblEntry[port].hourTo_1;
+    pageContent += ":";
+    pageContent += tblEntry[port].minuteTo_1;
+    pageContent += "<br>\n";
+
+    return( retVal );
+}
+
+//
+// ************************************************************************
+//
+// ---------- int postTimeFrom2( int port )
+//
+// ****************pageContent********************************************************
+//
+int postTimeFrom2( int port )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    postResult( retVal );
+    pageContent += ":";
+
+    pageContent += _apiKeywords[API_KEYWORD_FROM2];
+    pageContent += "=";
+    pageContent += tblEntry[port].hourFrom_2;
+    pageContent += ":";
+    pageContent += tblEntry[port].minuteFrom_2;
+    pageContent += "<br>\n";
+
+    return( retVal );
+}
+
+//
+// ************************************************************************
+//pageContent
+// ---------- int postTimeTo2( int port )
+//
+// ************************************************************************
+//
+int postTimeTo2( int port )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    postResult( retVal );
+    pageContent += ":";
+
+    pageContent += _apiKeywords[API_KEYWORD_TO2];
+    pageContent += "=";
+    pageContent += tblEntry[port].hourTo_2;
+    pageContent += ":";
+    pageContent += tblEntry[port].minuteTo_2;
+    pageContent += "<br>\n";
+
+    return( retVal );
+}
+
+//
+// ************************************************************************
+//
+// ---------- int postExt1( int port )
+//
+// ************************************************************************
+//
+int postExt1( int port )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    postResult( retVal );
+    pageContent += ":";
+
+    pageContent += _apiKeywords[API_KEYWORD_EXT1];
+    pageContent += "=";
+
+    if( tblEntry[port].extEnable_1 )
+    {
+        pageContent += API_VALUE_ENABLE;
+    }
+    else
+    {
+        pageContent += API_VALUE_DISABLE;
+    }
+    pageContent += "<br>\n";
+
+    return( retVal );
+}
+                                        
+//
+// ************************************************************************
+//
+// ---------- int postExt2( int port )
+//
+// ************************************************************************
+//
+int postExt2( int port )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    postResult( retVal );
+    pageContent += ":";
+
+    pageContent += _apiKeywords[API_KEYWORD_EXT2];
+    pageContent += "=";
+
+    if( tblEntry[port].extEnable_2 )
+    {
+        pageContent += API_VALUE_ENABLE;
+    }
+    else
+    {
+        pageContent += API_VALUE_DISABLE;
+    }
+    pageContent += "<br>\n";
+
+    return( retVal );
+}
+
+//
+// ************************************************************************
+//
+// ---------- int postMode( int port )
+//
+// ************************************************************************
+//
+int postMode( int port )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    postResult( retVal );
+    pageContent += ":";
+
+    pageContent += _apiKeywords[API_KEYWORD_MODE];
+    pageContent += "=";
+
+    pageContent += tblEntry[port].mode;
+    pageContent += "<br>\n";
+
+    return( retVal );
+}
+
+
+//
+// ************************************************************************
+//
+// ---------- int checkApiKey( const char* apiKey )
+//
+// ************************************************************************
+//
+int checkApiKey( const char* apiKey )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    postResult( retVal );
+
+    return( retVal );
+}
+
+//
+// ************************************************************************
+//
+// ---------- int postApiKey( const char* apiKey )
+//
+// ************************************************************************
+//
+int postApiKey( const char* apiKey )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    postResult( retVal );
+    pageContent += ":";
+    pageContent += _apiKeywords[API_KEYWORD_APIKEY];
+    pageContent += "=";
+    pageContent +=  String(apiKey);
+
+    return( retVal );
+}
+
+//
+// ************************************************************************
+//
+// ---------- int postResult( int resultCode )
+//
+// ************************************************************************
+//
+int postResult( int resultCode )
+{
+    int retVal = API_RESULT_SUCCESS;
+
+    pageContent += String(resultCode);
+
+    switch( resultCode )
+    {
+        case API_RESULT_SUCCESS:
+            pageContent += API_MSG_SUCCESS;
+            break;
+        case API_RESULT_MISSING_PORT:
+            pageContent += API_MSG_MISSING_PORT;
+            break;
+        case API_RESULT_INVALID_MODE:
+            pageContent += API_MSG_INVALID_MODE;
+            break;
+        case API_RESULT_MISSING_TIMEVALUE:
+            pageContent += API_MSG_MISSING_TIMEVALUE;
+            break;
+        case API_RESULT_INVALID_TIMEVALUE:
+            pageContent += API_MSG_INVALID_TIMEVALUE;
+            break;
+        case API_RESULT_INVALID_MODE_TIME1:
+            pageContent += API_MSG_INVALID_MODE_TIME1;
+            break;
+        case API_RESULT_INVALID_MODE_TIME2:
+            pageContent += API_MSG_INVALID_MODE_TIME2;
+            break;
+        case API_RESULT_INVALID_MODE_EXT1:
+            pageContent += API_MSG_INVALID_MODE_EXT1;
+            break;
+        case API_RESULT_INVALID_MODE_EXT2:
+            pageContent += API_MSG_INVALID_MODE_EXT2;
+            break;
+        default:
+            pageContent += API_MSG_UNKNOWN_RESULTCODE;
+            break;
+    }
+    pageContent += "<br>\n";            
+
+    return( retVal );
+}
+
+//
+// ************************************************************************
+//
+// ---------- bool isValidTime( const char* minute )
+//
+// ************************************************************************
+//
+bool isValidTime( const char* minute )
+{
+    bool retVal = true;
+// bool isValidHour( const char* hour )
+// bool isValidMinute( const char* minute )
+
+    return( retVal );
+}
+
+//
+// ************************************************************************
+//
+// ---------- void processApiCall( int keyword, const char* arg )
+//
+// ************************************************************************
+//
+void processApiCall( int keyword, const char* arg )
+{         
+    // String apiKey ( around line #260 ) contains a hash code
+    // that will be used as Web-api-key
+
+    int retVal;
+
+    if( arg != NULL )
+    {
+        switch(keyword)
+        {
+            case API_KEYWORD_UPDATE:
+                if( strlen(arg) > 0 )
+                {
+                    // extended update - arg is the name of
+                    //                   update file to use
+                    retVal = handleUpdateEx(arg);
+                    postResult( retVal );
+                }
+                else
+                {
+                    // regular update - just call file check
+                    retVal = handleUpdate();
+                    postResult( retVal );
+                }
+                break;
+            case API_KEYWORD_APIKEY:
+                if( strlen(arg) > 0 )
+                {
+                    // check whether the argument is a valid
+                    // hash-code
+                    checkApiKey( arg );    
+                }
+                else
+                {
+                    // if no argument is given this is a
+                    // request for the api-key, so send it back.
+                    postApiKey( arg );    
+                }
+                break;
+            case API_KEYWORD_PORT:
+                if( strlen(arg) <= 0 )
+                {        
+                    postResult( API_RESULT_MISSING_PORT );
+                }
+                break;
+            case API_KEYWORD_MODE:
+                if( server.arg( _apiKeywords[API_KEYWORD_PORT] ).length() )
+                {
+                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt();
+                    
+                    if(server.arg( _apiKeywords[API_KEYWORD_MODE] ).equalsIgnoreCase(API_VALUE_AUTO))
+                    {
+                        tblEntry[port].mode = API_VALUE_AUTO;
+                        retVal = E_SUCCESS;
+                        postResult( retVal );
+                    }
+                    else
+                    {
+                        if(server.arg( _apiKeywords[API_KEYWORD_MODE] ).equalsIgnoreCase(API_VALUE_OFF))
+                        {
+                            tblEntry[port].mode = API_VALUE_OFF;
+                            retVal = E_SUCCESS;
+                            postResult( retVal );
+                        }
+                        else
+                        {
+                            if(server.arg( _apiKeywords[API_KEYWORD_MODE] ).equalsIgnoreCase(API_VALUE_ON))
+                            {
+                                tblEntry[port].mode = API_VALUE_ON;
+                                retVal = E_SUCCESS;
+                                postResult( retVal );
+                            }
+                            else
+                            {
+                                if(server.arg( _apiKeywords[API_KEYWORD_MODE] ) )
+                                {
+                                    postResult( API_RESULT_INVALID_MODE );
+                                }
+                                else
+                                {
+                                    postMode( port );    
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    postResult( API_RESULT_MISSING_PORT );
+                }
+                break;
+            case API_KEYWORD_FROM1:
+            case API_KEYWORD_TO1:
+            case API_KEYWORD_FROM2:
+            case API_KEYWORD_TO2:
+                if( strlen(arg) > 0 )
+                {
+                    if( server.arg( _apiKeywords[API_KEYWORD_PORT] ).length() )
+                    {
+                        int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt();
+                      
+                        if( isValidTime(arg) )
+                        {
+                            switch(keyword)
+                            {
+                                case API_KEYWORD_FROM1:
+                                    if( server.arg( _apiKeywords[API_KEYWORD_FROM1] ))
+                                    {
+                                        retVal = E_SUCCESS;
+                                        postResult( retVal );                                      
+                                    }
+                                    else
+                                    {
+                                      postTimeFrom1( port );
+                                    }
+                                                                  
+// String   hourFrom_1;
+// String   minuteFrom_1;                                
+// tblEntry[port].hourFrom_1 =
+// tblEntry[port].minuteFrom_1 =
+
+// tblEntry[port].hourTo_1 =
+// tblEntry[port].minuteTo_1 =
+
+// tblEntry[port].hourFrom_2 =
+// tblEntry[port].minuteFrom_2 =
+
+// tblEntry[port].hourTo_2 =
+// tblEntry[port].minuteTo_2 =
+
+
+                                    break;
+                                case API_KEYWORD_TO1:
+                                    if( server.arg( _apiKeywords[API_KEYWORD_TO1] ))
+                                    {
+                                        retVal = E_SUCCESS;
+                                        postResult( retVal );                                      
+                                    }
+                                    else
+                                    {
+                                      postTimeTo1( port );
+                                    }
+
+                                    break;                                
+                                case API_KEYWORD_FROM2:
+                                    if( server.arg( _apiKeywords[API_KEYWORD_FROM2] ))
+                                    {
+                                        retVal = E_SUCCESS;
+                                        postResult( retVal );                                      
+                                    }
+                                    else
+                                    {
+                                      postTimeFrom2( port );
+                                    }
+                                  
+                                    break;
+                                case API_KEYWORD_TO2:
+                                    if( server.arg( _apiKeywords[API_KEYWORD_TO2] ))
+                                    {
+                                        retVal = E_SUCCESS;
+                                        postResult( retVal );                                      
+                                    }
+                                    else
+                                    {
+                                      postTimeTo2( port );
+                                    }
+                                    break;
+                            }
+                        }
+                        else
+                        {
+                            postResult( API_RESULT_INVALID_TIMEVALUE );
+                        }
+                    }
+                    else
+                    {
+                        postResult( API_RESULT_MISSING_PORT );
+                    }
+                }
+                else
+                {
+                    postResult( API_RESULT_MISSING_TIMEVALUE );
+                }
+                pageContent += "<br>\n";                  
+                break;
+            case API_KEYWORD_TIME1:
+            case API_KEYWORD_TIME2:
+                if( server.arg( _apiKeywords[API_KEYWORD_PORT] ).length() )
+                {    
+                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt();
+
+                    if(keyword == API_KEYWORD_TIME1)
+                    {
+                        if(server.arg( _apiKeywords[API_KEYWORD_TIME1] ).equalsIgnoreCase(API_VALUE_ENABLE))
+                        {
+
+                            tblEntry[port].enabled_1 = true;
+                            retVal = E_SUCCESS;
+                            postResult( retVal );
+                        }
+                        else
+                        {
+
+                            if(server.arg( _apiKeywords[API_KEYWORD_TIME1] ).equalsIgnoreCase(API_VALUE_DISABLE))
+                            {
+                                tblEntry[port].enabled_1 = false;
+                                retVal = E_SUCCESS;
+                                postResult( retVal );
+                            }
+                            else
+                            {
+                                if(server.arg(_apiKeywords[API_KEYWORD_TIME1]))
+                                {
+                                    postResult( API_RESULT_INVALID_MODE_TIME1 );
+                                }
+                                else
+                                {
+                                    postTime1Mode( port );
+                                }
+                            }                            
+                        }
+                    }
+                    else
+                    {
+                        if(keyword == API_KEYWORD_TIME2)
+                        {
+                            if(server.arg( _apiKeywords[API_KEYWORD_TIME2] ).equalsIgnoreCase(API_VALUE_ENABLE))
+                            {
+                                tblEntry[port].enabled_2 = true;
+                                retVal = E_SUCCESS;
+                                postResult( retVal );
+                            }
+                            else
+                            {
+
+                                if(server.arg( _apiKeywords[API_KEYWORD_TIME2] ).equalsIgnoreCase(API_VALUE_DISABLE))
+                                {
+                                    tblEntry[port].enabled_2 = false;
+                                    retVal = E_SUCCESS;
+                                    postResult( retVal );
+                                }
+                                else
+                                {
+
+                                    if(server.arg(_apiKeywords[API_KEYWORD_TIME2]))
+                                    {
+                                        postResult( API_RESULT_INVALID_MODE_TIME2 );
+                                    }
+                                    else
+                                    {
+                                        postTime2Mode( port );
+                                    }
+                                }
+
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    postResult( API_RESULT_MISSING_PORT );
+                }
+                break;
+            case API_KEYWORD_EXT1:
+                if( server.arg( _apiKeywords[API_KEYWORD_PORT] ).length() )
+                {
+                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt();
+                  
+                    if(server.arg( _apiKeywords[API_KEYWORD_EXT1] ).equalsIgnoreCase(API_VALUE_ENABLE))
+                    {
+
+                        tblEntry[port].extEnable_1 = true;
+                        retVal = E_SUCCESS;
+                        postResult( retVal );
+                    }
+                    else
+                    {
+                        if(server.arg( _apiKeywords[API_KEYWORD_EXT1] ).equalsIgnoreCase(API_VALUE_DISABLE))
+                        {
+
+                            tblEntry[port].extEnable_1 = false;
+                            retVal = E_SUCCESS;
+                            postResult( retVal );
+                        }
+                        else
+                        {
+                            if(server.arg( _apiKeywords[API_KEYWORD_EXT1] ).equalsIgnoreCase(API_VALUE_ON))
+                            {
+// trigger ext1                       tblEntry[port]
+
+                                retVal = E_SUCCESS;
+                                postResult( retVal );
+                            }
+                            else
+                            {
+                                if(server.arg( _apiKeywords[API_KEYWORD_EXT1] ).equalsIgnoreCase(API_VALUE_OFF))
+                                {                              
+// trigger ext1                       tblEntry[port]
+
+                                    retVal = E_SUCCESS;
+                                    postResult( retVal );
+                                }
+                                else
+                                {                          
+                                    if(server.arg( _apiKeywords[API_KEYWORD_EXT1] ) )
+                                    {
+                                        postResult( API_RESULT_INVALID_MODE_EXT1 );
+                                    }
+                                    else
+                                    {
+                                        postExt1( port );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    postResult( API_RESULT_MISSING_PORT );
+                }
+                break;   
+            case API_KEYWORD_EXT2:
+                if( server.arg( _apiKeywords[API_KEYWORD_PORT] ).length() )
+                {
+                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt();
+                  
+                    if(server.arg( _apiKeywords[API_KEYWORD_EXT2] ).equalsIgnoreCase(API_VALUE_ENABLE))
+                    {
+
+                        tblEntry[port].extEnable_2 = true;
+                        retVal = E_SUCCESS;
+                        postResult( retVal );
+                        
+                    }
+                    else
+                    {
+                        if(server.arg( _apiKeywords[API_KEYWORD_EXT2] ).equalsIgnoreCase(API_VALUE_DISABLE))
+                        {
+
+                            tblEntry[port].extEnable_2 = false;
+                            retVal = E_SUCCESS;
+                            postResult( retVal );
+
+                        }
+                        else
+                        {
+                            if(server.arg( _apiKeywords[API_KEYWORD_EXT2] ).equalsIgnoreCase(API_VALUE_ON))
+                            {
+// trigger ext1                       tblEntry[port]
+
+                                retVal = E_SUCCESS;
+                                postResult( retVal );
+                            }
+                            else
+                            {
+                                if(server.arg( _apiKeywords[API_KEYWORD_EXT2] ).equalsIgnoreCase(API_VALUE_OFF))
+                                {                              
+// trigger ext1                       tblEntry[port]
+
+                                    retVal = E_SUCCESS;
+                                    postResult( retVal );
+                                }
+                                else
+                                {      
+                                    if(server.arg( _apiKeywords[API_KEYWORD_EXT2] ) )
+                                    {
+                                        postResult( API_RESULT_INVALID_MODE_EXT2 );
+                                    }
+                                    else
+                                    {
+                                        postExt2( port );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    postResult( API_RESULT_MISSING_PORT );
+                }
+                break;   
+            default:
+                pageContent += "120:ERR: UNKNOWN OPTION";
+                pageContent += "<br>\n";            
+                break;
+        }
+    }
+}
+
+//
+// ************************************************************************
+//
 // ---------- void apiPage()
 //
 // ************************************************************************
 //
-
 void apiPage()
 {
 
   int i;
   pageContent = "";
 
-
-  pageContent += "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">\n";
+  pageContent  = "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">\n";
   pageContent += "<html>\n";
   pageContent += "<head>\n";
   pageContent += "<meta charset=\"utf-8\">\n";
@@ -2778,76 +3753,52 @@ void apiPage()
 
   pageContent += String("apiPage<br>\n");
 
-  for (i = 0; i < server.args(); i++ )
-  {
-    pageContent += server.argName(i) + String("=") + server.arg(i) + String("<br>\n");
-#ifdef DO_LOG
-    if ( !beQuiet )
-    {
-      Logger.Log(LOGLEVEL_DEBUG, (const char*) "%s = %s<br>\n", server.argName(i).c_str(), server.arg(i).c_str() );
-    }
-#endif // DO_LOG
-  }
-
   if ( server.method() == SERVER_METHOD_POST )
-    //        server.hasArg(INDEX_BUTTONNAME_ADMIN)  )
   {
-    pageContent += String("POST REQUEST<br>\n");
-#ifdef DO_LOG
-    if ( !beQuiet )
-    {
-      Logger.Log(LOGLEVEL_DEBUG, (const char*) "POST REQUEST<br>\n");
-    }
-#endif // DO_LOG
+    LEDRed();
+    pageContent += String("POST REQUEST - NO MORE OUTPUT!<br>\n");
   }
   else
   {
+    LEDBlue();
     pageContent += String("GET REQUEST<br>\n");
+
 #ifdef DO_LOG
     if ( !beQuiet )
     {
       Logger.Log(LOGLEVEL_DEBUG, (const char*) "GET REQUEST<br>\n");
     }
 #endif // DO_LOG
+
+    pageContent += "<br>\n";
+
+    // loop over NUM_API_KEYWORDS-1 items only because of NULL at the end    
+    for( i = 0; i < (NUM_API_KEYWORDS-1); i++ )
+    {
+      pageContent += "server.argName[" + String(i) + "] = " + server.argName(i);
+      pageContent += " -> server.hasArg[" + String(_apiKeywords[i]) + "] = " + server.hasArg( _apiKeywords[i] );
+      pageContent += " -> server.arg("    + String(_apiKeywords[i]) + ") = " + server.arg( _apiKeywords[i] );
+      pageContent += "<br>\n";
+
+      if( server.hasArg( _apiKeywords[i] ) )
+      {
+        if( server.arg( _apiKeywords[i] ) )
+        {
+          processApiCall( i, server.arg(_apiKeywords[i]).c_str()) ;
+        }
+        else
+        {
+          processApiCall( i, NULL );
+        }
+      }
+    }
+
+    pageContent += "</body>\n";
+    pageContent += "</html>\n";
+
+    server.send(200, "text/html", pageContent);
   }
-
-  pageContent += "</body>\n";
-  pageContent += "</html>\n";
-
-  server.send(200, "text/html", pageContent);
 }
 
-/* ************** ++++++++++ ************* +++++++++++++++ */
-
-#ifdef HTTP_CLIENT
-HTTPClient http;
-http.begin("http://192.168.0.104:8080/webappfordemo/Version");
-int httpCode = http.GET();
-if (httpCode == HTTP_CODE_OK)
-{
-  Serial.print("HTTP response code ");
-  Serial.println(httpCode);
-  String response = http.getString();
-  Serial.println(response);
-}
-
-// We now create a URI for the request
-String url = "/stan";
-
-Serial.print("Requesting URL: ");
-Serial.println(url);
-
-// This will send the request to the server
-client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-             "Host: " + host + "\r\n" +
-             "Connection: close\r\n\r\n");
-delay(10);
-
-// Read all the lines of the reply from server and print them to Serial
-Serial.println("Respond:");
-while (client.available()) {
-  String line = client.readStringUntil('\r');
-  Serial.print(line);
-}
-#endif // HTTP_CLIENT
+/* ************** nothing behind this line ************** */
 
