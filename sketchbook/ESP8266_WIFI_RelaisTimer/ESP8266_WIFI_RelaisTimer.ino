@@ -72,8 +72,10 @@
 // 2016/12/18: several cleanups and styling changes
 // 2016/12/18: added some verifications on setup page
 // 2016/12/18: optimized for size (must be less than 50% of an ESP-01)
-// 2016/12/18: implemented Web-API
+// 2016/12/18: added Web-API
 // 2016/12/18: UDP client and server functionality for multicasting
+// 2016/12/22: EXT1 and EXT2 handling on multicast request added
+// 2016/12/22: EXT1 and EXT2 calls in Web-API too
 //
 //
 // ************************************************************************
@@ -110,6 +112,7 @@ bool beQuiet;
 // #define __ASSERT_USE_STDERR     //
 // #include <assert.h>             // for future use
 
+
 #include "dsEeprom.h"           // simplified access to onchip EEPROM
 #include "SimpleLog.h"          // fprintf()-like logging
 
@@ -132,6 +135,11 @@ bool beQuiet;
 #define DEFAULT_HTTP_SERVER_PORT        "8080"
 #define DEFAULT_NODENAME                "esp8266"
 #define DEFAULT_ADMIN_PASSWORD          "esp8266"
+
+#define RUN_MODE_AUTO    0
+#define RUN_MODE_EXT1    1
+#define RUN_MODE_EXT2    2
+#define DEFAULT_RUN_MODE RUN_MODE_AUTO
 
 // ------ define if GPIO00 and GPIO02 are SCL/SDA to a PCF8574
 //
@@ -188,6 +196,19 @@ String ntpServerPort;
 // ************************************************************************
 //
 String wlanSSID;
+//
+// ************************************************************************
+// global short that holds current runmode
+// ************************************************************************
+//
+short volatile runMode;
+//
+#define UDP_REQUEST_EXT1_START   "EXT1:start"
+#define UDP_REQUEST_EXT2_START   "EXT2:start"
+#define UDP_REQUEST_EXT1_STOP    "EXT1:stop"
+#define UDP_REQUEST_EXT2_STOP    "EXT2:stop"
+//
+#define UDP_UNKNOWN_REQUEST      -2
 //
 // ************************************************************************
 // setup for  online-updates
@@ -257,7 +278,7 @@ String wwwServerPort;
 // Nodename - not currently in use. Part of standard data.
 String nodeName;
 // SHA1 - hash used as api key
-String apiKey;
+String apiHashKey;
 // Password to get access to admin page. Not currently in use.
 String adminPasswd;
 //
@@ -363,6 +384,8 @@ dsEeprom eeprom;
 #define ACTION_FLAG_OVERRIDDEN    32
 #define ACTION_FLAG_ALWAYS_ON     64
 #define ACTION_FLAG_ALWAYS_OFF   128
+#define ACTION_FLAG_MODE_EXT1    256
+#define ACTION_FLAG_MODE_EXT2    512
 
 #define NUM_SETUP_FORM_FIELDS     14
 
@@ -1452,7 +1475,7 @@ void setup()
   delay(10);
 
   generateNodename();
-  apiKey = sha1(nodeName);
+  apiHashKey = sha1(nodeName);
  
   Logger.Init(LOGLEVEL_DEBUG, &Serial);
 
@@ -1462,7 +1485,7 @@ void setup()
   Logger.Log(LOGLEVEL_DEBUG, (const char*) "EEPROM_EXT_DATA_END = %d\n", EEPROM_EXT_DATA_END );
   Logger.Log(LOGLEVEL_DEBUG, (const char*) "Current firmware is = %s\n", FIRMWARE_CHECK );
 
-  Logger.Log(LOGLEVEL_DEBUG, (const char*) "UUID(SHA1) is: %s\n", apiKey.c_str());
+  Logger.Log(LOGLEVEL_DEBUG, (const char*) "UUID(SHA1) is: %s\n", apiHashKey.c_str());
 #endif // DO_LOG
 
 #ifdef ESP_HAS_PCF8574
@@ -1471,6 +1494,8 @@ void setup()
   //  scanIIC();
 #endif // ESP_HAS_PCF8574
 
+  // default run mode = auto
+  runMode = DEFAULT_RUN_MODE;
 
   resetAdminSettings2Default();
   resetUpdateInfo2Default();
@@ -1843,162 +1868,230 @@ int check4Action( int nowMinutes )
 
 
 #ifdef DO_LOG
-  if ( !beQuiet )
-  {
+    if ( !beQuiet )
+    {
 Logger.Log(LOGLEVEL_DEBUG," [%d] Enable: %d, mode: %s, hr1from: %s min1from: %s hr1to: %s min1to: %s hr2from: %s min2from: %s hr2to: %s min2to: %s \n",
 	i, tblEntry[i].enabled_1, tblEntry[i].mode.c_str(), tblEntry[i].hourFrom_1.c_str(), tblEntry[i].minuteFrom_1.c_str(),
 tblEntry[i].hourTo_1.c_str(), tblEntry[i].minuteTo_1.c_str(), tblEntry[i].hourFrom_2.c_str(), tblEntry[i].minuteFrom_2.c_str(),
 tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() ); 
-  }
+    }
 #endif // DO_LOG
 
-    if ( tblEntry[i].enabled_1 )
-    {
 
-      if ( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      if ( tblEntry[i].enabled_1 )
       {
 
-        chkMinutesFrom = (atoi(tblEntry[i].hourFrom_1.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_1.c_str());
-        chkMinutesTo = (atoi(tblEntry[i].hourTo_1.c_str()) * 60) + atoi(tblEntry[i].minuteTo_1.c_str());
-
-        if ( nowMinutes >= chkMinutesFrom )
+        if ( tblEntry[i].mode.equalsIgnoreCase("auto") )
         {
-#ifdef DO_LOG
-          if ( !beQuiet )
-          {
-            Logger.Log(LOGLEVEL_DEBUG,
-                       (const char*) "action is time 1 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
-                       tblEntry[i].hourFrom_1.c_str(), tblEntry[i].minuteFrom_1.c_str(),
-                       chkMinutesFrom, i, tblEntry[i].actionFlag);
-          }
-#endif // DO_LOG
 
-          if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) == 0 )
-          {
-            switchRelais(i, RELAIS_ON);
+          chkMinutesFrom = (atoi(tblEntry[i].hourFrom_1.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_1.c_str());
+          chkMinutesTo = (atoi(tblEntry[i].hourTo_1.c_str()) * 60) + atoi(tblEntry[i].minuteTo_1.c_str());
 
+          if ( nowMinutes >= chkMinutesFrom )
+          {
 #ifdef DO_LOG
             if ( !beQuiet )
             {
-              Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 1 to active\n");
+              Logger.Log(LOGLEVEL_DEBUG,
+                         (const char*) "action is time 1 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
+                         tblEntry[i].hourFrom_1.c_str(), tblEntry[i].minuteFrom_1.c_str(),
+                         chkMinutesFrom, i, tblEntry[i].actionFlag);
             }
 #endif // DO_LOG
+
+            if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) == 0 )
+            {
+              if( runMode == RUN_MODE_EXT1 || runMode == RUN_MODE_EXT2 ) 
+              {
+                if( tblEntry[i].extEnable_1 || tblEntry[i].extEnable_2 )
+                {
+                  switchRelais(i, RELAIS_ON);
+                  if( runMode == RUN_MODE_EXT1 )
+                  {
+                    tblEntry[i].actionFlag |= ACTION_FLAG_MODE_EXT1;
+                  }
+                  else
+                  {
+                    tblEntry[i].actionFlag |= ACTION_FLAG_MODE_EXT2;
+                  }
+                }
+              }
+              else
+              {
+                switchRelais(i, RELAIS_ON);
+#ifdef DO_LOG
+                if ( !beQuiet )
+                {
+                  Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 1 to active\n");
+                }
+#endif // DO_LOG
+              }
+            }
+          }
+
+          if( nowMinutes >= chkMinutesTo )
+          {
+#ifdef DO_LOG
+            if ( !beQuiet )
+            {
+              Logger.Log(LOGLEVEL_DEBUG,
+                         (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
+                         tblEntry[i].hourTo_1.c_str(), tblEntry[i].minuteTo_1.c_str(),
+                         chkMinutesTo, i, tblEntry[i].actionFlag);
+            }
+#endif // DO_LOG
+
+            if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) != 0 )
+            {
+              if( runMode != RUN_MODE_EXT1 && runMode != RUN_MODE_EXT2 ) 
+              {
+
+                switchRelais(i, RELAIS_OFF);
+
+#ifdef DO_LOG
+                if ( !beQuiet )
+                {
+                  Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 1 to inactive\n");
+                }
+#endif // DO_LOG
+              }
+            }
+            else
+            {
+#ifdef DO_LOG
+              if ( !beQuiet )
+              {
+                Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... actionFlag for time 1 is already inactive\n");
+              }
+#endif // DO_LOG
+            }
           }
         }
-
-        if( nowMinutes >= chkMinutesTo )
+        else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
         {
 #ifdef DO_LOG
           if ( !beQuiet )
           {
-            Logger.Log(LOGLEVEL_DEBUG,
-                       (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
-                       tblEntry[i].hourTo_1.c_str(), tblEntry[i].minuteTo_1.c_str(),
-                       chkMinutesTo, i, tblEntry[i].actionFlag);
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #1 is not auto\n", i);
           }
 #endif // DO_LOG
 
-          if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) != 0 )
+          if ( tblEntry[i].mode.equalsIgnoreCase("on") )
           {
-            switchRelais(i, RELAIS_OFF);
-
-#ifdef DO_LOG
-            if ( !beQuiet )
-            {
-              Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 1 to inactive\n");
-            }
-#endif // DO_LOG
+            alwaysOn(i);
           }
           else
           {
-#ifdef DO_LOG
-            if ( !beQuiet )
+            if ( tblEntry[i].mode.equalsIgnoreCase("off") )
             {
-              Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... actionFlag for time 1 is already inactive\n");
+              alwaysOff(i);
             }
-#endif // DO_LOG
           }
         }
       }
-      else // if( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      else // if( tblEntry[i].enabled_1 )
       {
 #ifdef DO_LOG
         if ( !beQuiet )
         {
-          Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #1 is not auto\n", i);
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... entry for port %d time #1 disabled\n", i);
         }
 #endif // DO_LOG
-
-        if ( tblEntry[i].mode.equalsIgnoreCase("on") )
-        {
-          alwaysOn(i);
-        }
-        else
-        {
-          if ( tblEntry[i].mode.equalsIgnoreCase("off") )
-          {
-            alwaysOff(i);
-          }
-        }
       }
-    }
-    else // if( tblEntry[i].enabled_1 )
-    {
-#ifdef DO_LOG
-      if ( !beQuiet )
-      {
-        Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... entry for port %d time #1 disabled\n", i);
-      }
-#endif // DO_LOG
-    }
 
-    if ( tblEntry[i].enabled_2 )
-    {
-      if ( tblEntry[i].mode.equalsIgnoreCase("auto") )
+      if ( tblEntry[i].enabled_2 )
       {
-        chkMinutesFrom = (atoi(tblEntry[i].hourFrom_2.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_2.c_str());
-        chkMinutesTo = (atoi(tblEntry[i].hourTo_2.c_str()) * 60) + atoi(tblEntry[i].minuteTo_2.c_str());
-
-        if( nowMinutes >= chkMinutesFrom )
+        if ( tblEntry[i].mode.equalsIgnoreCase("auto") )
         {
-#ifdef DO_LOG
-          if ( !beQuiet )
-          {
-            Logger.Log(LOGLEVEL_DEBUG,
-                       (const char*) "action is time 2 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
-                       tblEntry[i].hourFrom_2.c_str(), tblEntry[i].minuteFrom_2.c_str(),
-                       chkMinutesFrom, i tblEntry[i].actionFlag);
-          }
-#endif // DO_LOG
+          chkMinutesFrom = (atoi(tblEntry[i].hourFrom_2.c_str()) * 60) + atoi(tblEntry[i].minuteFrom_2.c_str());
+          chkMinutesTo = (atoi(tblEntry[i].hourTo_2.c_str()) * 60) + atoi(tblEntry[i].minuteTo_2.c_str());
 
-          if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) == 0 )
+          if( nowMinutes >= chkMinutesFrom )
           {
-            switchRelais(i, RELAIS_ON);
-
 #ifdef DO_LOG
             if ( !beQuiet )
             {
-              Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 2 to active\n");
+              Logger.Log(LOGLEVEL_DEBUG,
+                         (const char*) "action is time 2 - Begin %s:%s [%d] port %d. Actionflag is %d\n",
+                         tblEntry[i].hourFrom_2.c_str(), tblEntry[i].minuteFrom_2.c_str(),
+                         chkMinutesFrom, i tblEntry[i].actionFlag);
             }
 #endif // DO_LOG
-          }
-        }
 
-        if( nowMinutes >= chkMinutesTo )
-        {
+            if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) == 0 )
+            {
+              if( runMode != RUN_MODE_AUTO ) 
+              {
+
+// #ifdef DO_LOG
+//                 if ( !beQuiet )
+//                 {
+                  Logger.Log(LOGLEVEL_DEBUG, "check4Action -> Actionflag = %d and runMode=%d[%s]\n",
+                             tblEntry[i].actionFlag, runMode, runMode == RUN_MODE_EXT1?"EXT1":"EXT2" );
+//                 }
+// #endif // DO_LOG
+
+                if( tblEntry[i].extEnable_1 || tblEntry[i].extEnable_2 )
+                {
+                  switchRelais(i, RELAIS_ON);
+                  if( runMode == RUN_MODE_EXT1 )
+                  {
+                    tblEntry[i].actionFlag |= ACTION_FLAG_MODE_EXT1;
+                  }
+                  else
+                  {
+                    tblEntry[i].actionFlag |= ACTION_FLAG_MODE_EXT2;
+                  }
+                }
+              }
+              else
+              {
+                switchRelais(i, RELAIS_ON);
+
 #ifdef DO_LOG
-          if ( !beQuiet )
-          {
-            Logger.Log(LOGLEVEL_DEBUG,
-                       (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
-                       tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str(),
-                       chkMinutesTo, i, tblEntry[i].actionFlag);
+                if ( !beQuiet )
+                {
+                  Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 2 to active\n");
+                }
+#endif // DO_LOG
+              }
+            }
           }
+
+          if( nowMinutes >= chkMinutesTo )
+          {
+#ifdef DO_LOG
+            if ( !beQuiet )
+            {
+              Logger.Log(LOGLEVEL_DEBUG,
+                         (const char*) "action is time 1 - End %s:%s [%d] port %d. Actionflag is %d\n",
+                         tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str(),
+                         chkMinutesTo, i, tblEntry[i].actionFlag);
+            }
 #endif // DO_LOG
 
-          if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) != 0 )
-          {
-            switchRelais(i, RELAIS_OFF);
+            if ( (tblEntry[i].actionFlag & ACTION_FLAG_ACTIVE) != 0 )
+            {
+              if( runMode == RUN_MODE_AUTO )
+              {
+                switchRelais(i, RELAIS_OFF);
+// #ifdef DO_LOG
+//                 if ( !beQuiet )
+//                 {
+                     Logger.Log(LOGLEVEL_DEBUG, "Run mode Auto ... switch off\n");
+//                 }
+// #endif // DO_LOG
+              }
+              else
+              {
+// #ifdef DO_LOG
+//                 if ( !beQuiet )
+//                 {
+                     Logger.Log(LOGLEVEL_DEBUG, "Run mode is NOT auto - no need to switch\n");
+//                 }
+// #endif // DO_LOG
+              }
+            }
 
 #ifdef DO_LOG
             if ( !beQuiet )
@@ -2006,6 +2099,7 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
               Logger.Log(LOGLEVEL_DEBUG, (const char*) "set actionFlag for time 2 to inactive\n");
             }
 #endif // DO_LOG
+
           }
           else
           {
@@ -2017,35 +2111,34 @@ tblEntry[i].hourTo_2.c_str(), tblEntry[i].minuteTo_2.c_str() );
 #endif // DO_LOG
           }
         }
+        else // if( tblEntry[tmRow-1].mode.equalsIgnoreCase("auto") )
+        {
+#ifdef DO_LOG
+          if ( !beQuiet )
+          {
+            Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #2 is not auto\n", i);
+          }
+#endif // DO_LOG
+
+          if ( tblEntry[i].mode.equalsIgnoreCase("on") )
+          {
+            alwaysOn(i);
+          }
+          else
+          {
+            alwaysOff(i);
+          }
+        }
       }
-      else // if( tblEntry[tmRow-1].mode.equalsIgnoreCase("auto") )
+      else // if( tblEntry[i].enabled_2 )
       {
 #ifdef DO_LOG
         if ( !beQuiet )
         {
-          Logger.Log(LOGLEVEL_DEBUG, (const char*) "... entry for port %d time #2 is not auto\n", i);
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... entry for port %d time #2 disabled\n", i);
         }
 #endif // DO_LOG
-
-        if ( tblEntry[i].mode.equalsIgnoreCase("on") )
-        {
-          alwaysOn(i);
-        }
-        else
-        {
-          alwaysOff(i);
-        }
       }
-    }
-    else // if( tblEntry[i].enabled_2 )
-    {
-#ifdef DO_LOG
-      if ( !beQuiet )
-      {
-        Logger.Log(LOGLEVEL_DEBUG, (const char*) "nothing to do ... entry for port %d time #2 disabled\n", i);
-      }
-#endif // DO_LOG
-    }
   }
 
   return ( retVal );
@@ -2177,13 +2270,284 @@ int handleUpdate( void )
 //
 // ************************************************************************
 //
-// ---------- int processUDPRequest( const char* requestFrom, char packetBuffer[], int payloadLength )
+// ---------- void check4ExtMode( void )
 //
 // ************************************************************************
 //
-int processUDPRequest( const char* requestFrom, char packetBuffer[], int payloadLength )
+void check4ExtMode( void )
+{    
+  int currLine;
+  bool hasSwitched = false;
+
+// #ifdef DO_LOG
+//      if ( !beQuiet )
+//      {
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "START EXT1 mode ...\n");
+        
+//    }
+// #endif // DO_LOG
+
+  for ( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
+  {
+    if( tblEntry[currLine].extEnable_1 )
+    {
+      hasSwitched = true;
+      switchRelais(currLine, RELAIS_ON);
+      tblEntry[currLine].actionFlag |= ACTION_FLAG_MODE_EXT1;
+    }
+
+    if( tblEntry[currLine].extEnable_1 )
+    {
+      hasSwitched = true;
+      switchRelais(currLine, RELAIS_ON);
+      tblEntry[currLine].actionFlag |= ACTION_FLAG_MODE_EXT1;
+    }
+
+
+  }
+
+  if( hasSwitched )
+  {
+    runMode = RUN_MODE_EXT1;
+  }
+
+// #ifdef DO_LOG
+//      if ( !beQuiet )
+//      {
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "has switched = %s, runMode = %d[%s]\n",
+                   hasSwitched == true?"true":"false", runMode, 
+                   runMode == RUN_MODE_EXT1?"EXT1":"EXT2" );
+//      }
+// #endif // DO_LOG
+
+}
+
+//
+// ************************************************************************
+//
+// ---------- void startExt1Mode
+//
+// ************************************************************************
+//
+void startExt1Mode( void )
+{    
+  int currLine;
+  bool hasSwitched = false;
+
+// #ifdef DO_LOG
+//      if ( !beQuiet )
+//      {
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "START EXT1 mode ...\n");
+        
+//    }
+// #endif // DO_LOG
+
+  for ( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
+  {
+    if( tblEntry[currLine].extEnable_1 )
+    {
+      hasSwitched = true;
+      switchRelais(currLine, RELAIS_ON);
+      tblEntry[currLine].actionFlag |= ACTION_FLAG_MODE_EXT1;
+    }
+  }
+
+  if( hasSwitched )
+  {
+    runMode = RUN_MODE_EXT1;
+  }
+
+// #ifdef DO_LOG
+//      if ( !beQuiet )
+//      {
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) "has switched = %s, runMode = %d[%s]\n",
+                     hasSwitched == true?"true":"false", runMode, 
+                     runMode == RUN_MODE_EXT1?"EXT1":"EXT2" );                   
+//      }
+// #endif // DO_LOG
+
+}
+
+//
+// ************************************************************************
+//
+// ---------- void startExt2Mode
+//
+// ************************************************************************
+//
+void startExt2Mode( void )
+{
+  int currLine;
+  bool hasSwitched = false;
+
+// #ifdef DO_LOG
+//      if ( !beQuiet )
+//      {
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "START EXT2 mode ...\n");
+        
+//    }
+// #endif // DO_LOG
+
+  for ( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
+  {
+    if( tblEntry[currLine].extEnable_2 )
+    {
+      hasSwitched = true;
+      switchRelais(currLine, RELAIS_ON);
+      tblEntry[currLine].actionFlag |= ACTION_FLAG_MODE_EXT2;
+    }
+  }
+
+  if( hasSwitched )
+  {
+    runMode = RUN_MODE_EXT2;
+  }
+
+// #ifdef DO_LOG
+//      if ( !beQuiet )
+//      {
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "has switched = %s, runMode = %d\n",
+                   hasSwitched == true?"true":"false", runMode);
+        
+//    }
+// #endif // DO_LOG
+
+}
+
+//
+// ************************************************************************
+//
+// ---------- void stopExt1Mode
+//
+// ************************************************************************
+//
+void stopExt1Mode( void )
+{
+  int currLine;
+  bool hasSwitched = false;
+  
+// #ifdef DO_LOG
+//      if ( !beQuiet )
+//      {
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "STOP EXT1 mode ...\n");
+        
+//    }
+// #endif // DO_LOG
+
+  for ( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
+  {
+    if( tblEntry[currLine].extEnable_1 )
+    {
+      hasSwitched = true;
+      switchRelais(currLine, RELAIS_OFF);
+      tblEntry[currLine].actionFlag &= ~ACTION_FLAG_MODE_EXT1;
+    }
+  }
+
+  if( hasSwitched )
+  {
+    runMode = RUN_MODE_AUTO;
+    startupActions();
+  }
+
+// #ifdef DO_LOG
+//      if ( !beQuiet )
+//      {
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "has switched = %s, runMode = %d\n",
+                   hasSwitched == true?"true":"false", runMode);
+        
+//    }
+// #endif // DO_LOG
+
+}
+
+//
+// ************************************************************************
+//
+// ---------- void stopExt2Mode
+//
+// ************************************************************************
+//
+void stopExt2Mode( void )
+{
+  int currLine;
+  bool hasSwitched = false;
+
+// #ifdef DO_LOG
+//   if ( !beQuiet )
+//   {
+       Logger.Log(LOGLEVEL_DEBUG, (const char*) "STOP EXT2 mode ...\n");
+        
+//   }
+// #endif // DO_LOG
+
+  for ( currLine = 0; currLine < CONNECTED_RELAIS; currLine++ )
+  {
+    if( tblEntry[currLine].extEnable_2 )
+    {
+      hasSwitched = true;
+      switchRelais(currLine, RELAIS_OFF);
+      tblEntry[currLine].actionFlag &= ~ACTION_FLAG_MODE_EXT2;
+    }
+  }
+
+  if( hasSwitched )
+  {
+    runMode = RUN_MODE_AUTO;
+    startupActions();
+  }
+
+// #ifdef DO_LOG
+//      if ( !beQuiet )
+//      {
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "has switched = %s, runMode = %d\n",
+                   hasSwitched == true?"true":"false", runMode);
+        
+//    }
+// #endif // DO_LOG
+
+}
+
+//
+// ************************************************************************
+//
+// ---------- int processUDPRequest( const char* requestFrom, String &udpRequest, int payloadLength )
+//
+// ************************************************************************
+//
+int processUDPRequest( const char* requestFrom, String &udpRequest, int payloadLength )
 {
   int retVal = E_SUCCESS;
+
+  if( udpRequest.equalsIgnoreCase(UDP_REQUEST_EXT1_START) )
+  {
+    startExt1Mode();
+  }
+  else
+  {
+    if( udpRequest.equalsIgnoreCase(UDP_REQUEST_EXT2_START) )
+    {
+      startExt2Mode();
+    }
+    else
+    {
+      if( udpRequest.equalsIgnoreCase(UDP_REQUEST_EXT1_STOP) )
+      {
+        stopExt1Mode();
+      }
+      else
+      {
+        if( udpRequest.equalsIgnoreCase(UDP_REQUEST_EXT2_STOP) )
+        {
+          stopExt2Mode();
+        }
+        else
+        {
+          retVal = UDP_UNKNOWN_REQUEST;
+        }
+      }
+    }
+  }
 
   return( retVal );
 }
@@ -2196,59 +2560,113 @@ int processUDPRequest( const char* requestFrom, char packetBuffer[], int payload
 // ************************************************************************
 //
 #define HOUR_4_UPDATE_CHECK   9
+#define MULTICAST_CHECK_INTERVAL_MS 1000
+
 void loop()
 {
   static short wdayLastUpdateCheck;
   static short hourLastUpdateCheck;
+  static long lastMulticastCheck;
   time_t secsSinceEpoch;
   short nowMinutes;
-  static short minutesLastCheck;
+  static long minutesLastCheck;
   static int noBytes, message_size;
   static char packetBuffer[128];
   time_t utc;
   String remoteIP;
   IPAddress requestFromIP;
+  String dataString;
 
-// multiIP.c_str()
+  server.handleClient();
+  delay(2);
+  
+  if( millis() - lastMulticastCheck >= MULTICAST_CHECK_INTERVAL_MS )
+  {
 
+    noBytes= multicastInstance.parsePacket(); //// returns the size of the packet
+    if ( noBytes>0 && noBytes<20)
+    {
+      requestFromIP = multicastInstance.remoteIP();
+      remoteIP = requestFromIP.toString();
 
+// #ifdef DO_LOG
+//      if ( !beQuiet )
+//      {
+        Logger.Log(LOGLEVEL_DEBUG, (const char*) "Multicast request received, size = %d\n", noBytes );
+        
+//    }
+// #endif // DO_LOG
+
+      message_size=multicastInstance.read(packetBuffer,64); // read the packet into the buffer
+
+      if (message_size>0)
+      {
+        packetBuffer[message_size]=0; //// null terminate
+        dataString = String( (const char*) packetBuffer);
+
+        processUDPRequest( remoteIP.c_str(), dataString, message_size );
+
+// #ifdef DO_LOG
+//         if ( !beQuiet )
+//         {
+          Logger.Log(LOGLEVEL_DEBUG, (const char*) " - data: %s\n", packetBuffer);
+//         }
+// #endif // DO_LOG
+      }
+    }
+ 
+    lastMulticastCheck = millis();
+
+  } // millis() - lastMulticastCheck >= MULTICAST_CHECK_INTERVAL_MS
+  else
+  {
+    server.handleClient();
+    delay(2);
+  }
+  
   utc = now();
   secsSinceEpoch = CE.toLocal(utc, &tcr);
   nowMinutes = ( hour(secsSinceEpoch) * 60 ) + minute(secsSinceEpoch);
 
-
-  noBytes= multicastInstance.parsePacket(); //// returns the size of the packet
-  if ( noBytes>0 && noBytes<64)
+  if ( nowMinutes != minutesLastCheck )
   {
-    requestFromIP = multicastInstance.remoteIP();
-    remoteIP = requestFromIP.toString();
-
 #ifdef DO_LOG
     if ( !beQuiet )
     {
-      Logger.Log(LOGLEVEL_DEBUG, (const char*) "Multicast request received, size = %d\n", noBytes );
-        
- //           multicastInstance.remoteIP()   
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "loop: hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
     }
 #endif // DO_LOG
 
-    message_size=multicastInstance.read(packetBuffer,64); // read the packet into the buffer
+#ifdef NEVER_EVER_DEF
 
-    if (message_size>0)
+    if( minutesLastCheck == 0 )
     {
-      packetBuffer[message_size]=0; //// null terminate
+        check4Action(nowMinutes);
+    }
+    else
+    {
+        while( minutesLastCheck <= nowMinutes )
+        {
+            minutesLastCheck++;
+            check4Action(minutesLastCheck);
+        }
 
-      processUDPRequest( remoteIP.c_str(), packetBuffer, message_size );
-
-#ifdef DO_LOG
-      if ( !beQuiet )
-      {
-        Logger.Log(LOGLEVEL_DEBUG, (const char*) " - data: %s\n", packetBuffer);
-      }
-#endif // DO_LOG
+//        handleUpdate();  // NACH TEST WIEDER RAUS!!
     }
 
-  } 
+#else
+
+    check4Action(nowMinutes);
+    
+#endif // NEVER_EVER_DEF
+    
+    minutesLastCheck = nowMinutes;
+  }
+  else
+  {
+    server.handleClient();
+    delay(2);
+  }
 
   // the weekday now (Sunday is day 1)
   if ( weekday(secsSinceEpoch) != wdayLastUpdateCheck )
@@ -2266,42 +2684,10 @@ void loop()
       wdayLastUpdateCheck = weekday(secsSinceEpoch);
     }
   }
-
+  
   server.handleClient();
-
-  if ( nowMinutes != minutesLastCheck )
-  {
-#ifdef DO_LOG
-    if ( !beQuiet )
-    {
-      Logger.Log(LOGLEVEL_DEBUG, (const char*) "loop: hour is %d, minutes is %d\n", hour(secsSinceEpoch), minute(secsSinceEpoch) );
-    }
-#endif // DO_LOG
-
-    if( minutesLastCheck == 0 )
-    {
-        check4Action(nowMinutes);
-    }
-    else
-    {
-        while( minutesLastCheck != nowMinutes )
-        {
-            minutesLastCheck++;
-            check4Action(minutesLastCheck);
-        }
-
-        handleUpdate();  // NACH TEST WIEDER RAUS!!
-    }
-    minutesLastCheck = nowMinutes;
-    delay(2);
-
-  }
-  else
-  {
-    delay(5);
-  }
-
-
+  delay(2);
+  
 }
 
 
@@ -2322,13 +2708,13 @@ void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, ch
   pageContent += "<td align=\"center\" bgcolor=\"";
   // loght cyan #07F479  or grey #D4C9C9
   pageContent += sBgColor;
-  pageContent += "\">\n";
+  pageContent += "\">";
 
   pageContent += "<label>";
   // einschalten/ausschalten
   pageContent += sSwitch;
 
-  pageContent += "</label><br>\n";
+  pageContent += "</label><br>";
 
   // Stunde
 
@@ -2341,7 +2727,7 @@ void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, ch
 
   pageContent += "\" value=\"";
   pageContent += String(sHour);
-  pageContent += "\" size=\"2\" maxlength=\"2\" >\n";
+  pageContent += "\" size=\"2\" maxlength=\"2\" >";
 
   pageContent += " Uhr ";
 
@@ -2355,9 +2741,9 @@ void doTimeOnSelect( char *sTarget, char *sSwitch, char *sBgColor, int tmNum, ch
 
   pageContent += "\" value=\"";
   pageContent += String(sMinute);
-  pageContent += "\" size=\"2\" maxlength=\"2\" >\n";
+  pageContent += "\" size=\"2\" maxlength=\"2\" >";
 
-  pageContent += "</td>\n";
+  pageContent += "</td>";
 
 }
 
@@ -2407,19 +2793,19 @@ void doCreateLine( int tmRow )
   sprintf(sRow, "%d", tmRow);
 
 
-  pageContent += "<td>\n";
+  pageContent += "<td>";
   pageContent += "<input type=\"text\" name=\"bezeichner";
   pageContent += sRow;
 
   pageContent += "\" value=\"";
   pageContent += tblEntry[tmRow - 1].name;
-  pageContent += "\" size=\"4\" maxlength=\"10\">\n";
+  pageContent += "\" size=\"4\" maxlength=\"10\">";
   //
-  pageContent += "</td>\n";
+  pageContent += "</td>";
 
   // ---- ++++++++++ ZEIT 1 enable/disable ++++++++++ -----
 
-  pageContent += "<td bgcolor=\"#09CEF3\">\n";
+  pageContent += "<td bgcolor=\"#09CEF3\">";
   //
   pageContent += "<input type=\"checkbox\" name=\"enabled1_";
   pageContent += sRow;
@@ -2428,15 +2814,15 @@ void doCreateLine( int tmRow )
   {
     pageContent += " checked ";
   }
-  pageContent += "size=\"1\" >\n";
+  pageContent += "size=\"1\" >";
   //
-  pageContent += "<label>Zeit 1</label>\n";
-  pageContent += "</td>\n";
+  pageContent += "<label>Zeit 1</label>";
+  pageContent += "</td>";
   doTimeSelect( 1, tmRow, sRow);
 
   // ---- ++++++++++ ZEIT 2 enable/disable ++++++++++ -----
 
-  pageContent += "<td bgcolor=\"#09CEF3\">\n";
+  pageContent += "<td bgcolor=\"#09CEF3\">";
   //
   pageContent += " <input type=\"checkbox\" name=\"enabled2_";
   pageContent += sRow;
@@ -2445,13 +2831,13 @@ void doCreateLine( int tmRow )
   {
     pageContent += " checked ";
   }
-  pageContent += "size=\"1\" >\n";
+  pageContent += "size=\"1\" >";
   //
-  pageContent += "<label>Zeit 2</label>\n";
-  pageContent += "</td>\n";
+  pageContent += "<label>Zeit 2</label>";
+  pageContent += "</td>";
   doTimeSelect( 2, tmRow, sRow);
 
-  pageContent += "<td>\n";
+  pageContent += "<td>";
 
   // ---- ++++++++++ EXT 1 enable/disable ++++++++++ -----
 
@@ -2462,10 +2848,10 @@ void doCreateLine( int tmRow )
   {
     pageContent += " checked ";
   }
-  pageContent += "size=\"1\">\n";
+  pageContent += "size=\"1\">";
   //
-  pageContent += "<label>Ext 1</label>\n";
-  pageContent += "<br>\n";
+  pageContent += "<label>Ext 1</label>";
+  pageContent += "<br>";
 
   // ---- ++++++++++ EXT 2 enable/disable ++++++++++ -----
 
@@ -2476,11 +2862,11 @@ void doCreateLine( int tmRow )
   {
     pageContent += " checked ";
   }
-  pageContent += "size=\"1\">\n";
+  pageContent += "size=\"1\">";
   pageContent += "<label>Ext 2</label>";
 
   pageContent += "</td>";
-  pageContent += "<td>\n";
+  pageContent += "<td>";
 
   // ---- ++++++++++ MODE ON ++++++++++ -----
 
@@ -2491,9 +2877,9 @@ void doCreateLine( int tmRow )
   {
     pageContent += " checked ";
   }
-  pageContent += "size=\"1\">\n";
-  pageContent += "<label>Ein</label>\n";
-  pageContent += "<br>\n";
+  pageContent += "size=\"1\">";
+  pageContent += "<label>Ein</label>";
+  pageContent += "<br>";
 
   // ---- ++++++++++ MODE OFF ++++++++++ -----
 
@@ -2504,9 +2890,9 @@ void doCreateLine( int tmRow )
   {
     pageContent += " checked ";
   }
-  pageContent += "size=\"1\">\n";
-  pageContent += "<label>Aus</label>\n";
-  pageContent += "<br>\n";
+  pageContent += "size=\"1\">";
+  pageContent += "<label>Aus</label>";
+  pageContent += "<br>";
 
   // ---- ++++++++++ MODE AUTO ++++++++++ -----
 
@@ -2517,10 +2903,10 @@ void doCreateLine( int tmRow )
   {
     pageContent += " checked ";
   }
-  pageContent += "size=\"1\">\n";
-  pageContent += "<label>Auto</label>\n";
+  pageContent += "size=\"1\">";
+  pageContent += "<label>Auto</label>";
   // ---------
-  pageContent += "</td>\n";
+  pageContent += "</td>";
 
   // end Zeile ...
 
@@ -2801,79 +3187,79 @@ void setupPage()
 
   }
 
-  pageContent += "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">\n";
-  pageContent += "<html>\n";
-  pageContent += "<head>\n";
-  pageContent += "<meta charset=\"utf-8\">\n";
-  pageContent += "<title>Home</title>\n";
+  pageContent += "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">";
+  pageContent += "<html>";
+  pageContent += "<head>";
+  pageContent += "<meta charset=\"utf-8\">";
+  pageContent += "<title>Home</title>";
 
   pageContent += "<style> ";
   pageContent += "input[type=textdate] { width: 1.5em; }  ";
-  pageContent += "</style>\n";
+  pageContent += "</style>";
 
-  pageContent += "</head>\n";
+  pageContent += "</head>";
 
-  pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\">\n";
-  pageContent += "<div align=\"center\"><strong><h1>WiFi Relais</h1></strong></div>\n";
+  pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\">";
+  pageContent += "<div align=\"center\"><strong><h1>WiFi Relais</h1></strong></div>";
 
 
-  pageContent += "<div align=\"center\"><strong><h1>" + String(localIP.toString()) + "</h1></strong></div>\n";
+  pageContent += "<div align=\"center\"><strong><h1>" + String(localIP.toString()) + "</h1></strong></div>";
 
-  pageContent += "<form action=\"/\" method=\"get\">\n";
-  pageContent += "<hr align=\"center\"><br>\n";
-  pageContent += "<table border align=\"center\">\n";
+  pageContent += "<form action=\"/\" method=\"get\">";
+  pageContent += "<hr align=\"center\"><br>";
+  pageContent += "<table border align=\"center\">";
 
   // Zeile 1
-  pageContent += "<tr>\n";
+  pageContent += "<tr>";
   doCreateLine( 1 );
-  pageContent += "</tr>\n";
+  pageContent += "</tr>";
 
   // Zeile 2
-  pageContent += "<tr>\n";
+  pageContent += "<tr>";
   doCreateLine( 2 );
-  pageContent += "</tr>\n";
+  pageContent += "</tr>";
 
   // Zeile 3
-  pageContent += "<tr>\n";
+  pageContent += "<tr>";
   doCreateLine( 3 );
-  pageContent += "</tr>\n";
+  pageContent += "</tr>";
 
   // Zeile 4
-  pageContent += "<tr>\n";
+  pageContent += "<tr>";
   doCreateLine( 4 );
-  pageContent += "</tr>\n";
+  pageContent += "</tr>";
 
   // Zeile 5
-  pageContent += "<tr>\n";
+  pageContent += "<tr>";
   doCreateLine( 5 );
-  pageContent += "</tr>\n";
+  pageContent += "</tr>";
 
   // Zeile 6
-  pageContent += "<tr>\n";
+  pageContent += "<tr>";
   doCreateLine( 6 );
-  pageContent += "</tr>\n";
+  pageContent += "</tr>";
 
   // Zeile 7
-  pageContent += "<tr>\n";
+  pageContent += "<tr>";
   doCreateLine( 7 );
-  pageContent += "</tr>\n";
+  pageContent += "</tr>";
 
   // Zeile 8
-  pageContent += "<tr>\n";
+  pageContent += "<tr>";
   doCreateLine( 8 );
-  pageContent += "</tr>\n";
+  pageContent += "</tr>";
 
-  pageContent += "</table>\n";
-  pageContent += "<hr align=\"center\">\n";
-  pageContent += "<div align=\"center\">\n";
-  pageContent += "<input type=\"submit\" name=\"submit\" value=\"speichern\">\n";
-  pageContent += "<input type=\"reset\" name=\"reset\" value=\"reset\">\n";
-  pageContent += "<input type=\"submit\" name=\"ESP\" value=\"reboot\">\n";
-  pageContent += "</div>\n";
-  pageContent += "<hr align=\"center\"><br>\n";
-  pageContent += "</form>\n";
-  pageContent += "</body>\n";
-  pageContent += "</html>\n";
+  pageContent += "</table>";
+  pageContent += "<hr align=\"center\">";
+  pageContent += "<div align=\"center\">";
+  pageContent += "<input type=\"submit\" name=\"submit\" value=\"speichern\">";
+  pageContent += "<input type=\"reset\" name=\"reset\" value=\"reset\">";
+  pageContent += "<input type=\"submit\" name=\"ESP\" value=\"reboot\">";
+  pageContent += "</div>";
+  pageContent += "<hr align=\"center\"><br>";
+  pageContent += "</form>";
+  pageContent += "</body>";
+  pageContent += "</html>";
 
   server.send(200, "text/html", pageContent);
 
@@ -2966,17 +3352,15 @@ char *_apiKeywords[NUM_API_KEYWORDS] = {
 #define API_MSG_MISSING_PORT          ":MISSING ARGUMENT"
 #define API_RESULT_INVALID_MODE       120
 #define API_MSG_INVALID_MODE          ":INVALID MODE"
-#define API_RESULT_MISSING_TIMEVALUE  121
-#define API_MSG_MISSING_TIMEVALUE     ":MISSING TIME"
-#define API_RESULT_INVALID_TIMEVALUE  122
+#define API_RESULT_INVALID_TIMEVALUE  121
 #define API_MSG_INVALID_TIMEVALUE     ":INVALID TIME"
-#define API_RESULT_INVALID_MODE_TIME1 123
+#define API_RESULT_INVALID_MODE_TIME1 122
 #define API_MSG_INVALID_MODE_TIME1     ":INVALID MODE FOR TIME #1"
-#define API_RESULT_INVALID_MODE_TIME2 124
+#define API_RESULT_INVALID_MODE_TIME2 123
 #define API_MSG_INVALID_MODE_TIME2    ":INVALID MODE FOR TIME #2"
-#define API_RESULT_INVALID_MODE_EXT1  125
+#define API_RESULT_INVALID_MODE_EXT1  124
 #define API_MSG_INVALID_MODE_EXT1     "INVALID MODE FOR EXT #1"
-#define API_RESULT_INVALID_MODE_EXT2  126
+#define API_RESULT_INVALID_MODE_EXT2  125
 #define API_MSG_INVALID_MODE_EXT2     "INVALID MODE FOR EXT #2"
 #define API_RESULT_UNKNOWN_RESULTCODE 99
 #define API_MSG_UNKNOWN_RESULTCODE    ":UNKNOWN"
@@ -2995,8 +3379,8 @@ int postTime1Mode( int port )
 {
     int retVal = API_RESULT_SUCCESS;
 
-    postResult( retVal );
-    pageContent += ":" +
+    postResult( retVal, false );
+    pageContent += ":";
     pageContent += _apiKeywords[API_KEYWORD_TIME1];
     pageContent += "=";
 
@@ -3008,7 +3392,7 @@ int postTime1Mode( int port )
     {
         pageContent += API_VALUE_DISABLE;
     }
-    pageContent += "<br>\n";
+    pageContent += "<br>";
 
     return( retVal );
 }
@@ -3024,8 +3408,8 @@ int postTime2Mode( int port )
 {
     int retVal = API_RESULT_SUCCESS;
 
-    postResult( retVal );
-    pageContent += ":" +
+    postResult( retVal, false );
+    pageContent += ":";
     pageContent += _apiKeywords[API_KEYWORD_TIME2];
     pageContent += "=";
 
@@ -3037,7 +3421,7 @@ int postTime2Mode( int port )
     {
         pageContent += API_VALUE_DISABLE;
     }
-    pageContent += "<br>\n";
+    pageContent += "<br>";
 
     return( retVal );
 }
@@ -3053,14 +3437,14 @@ int postTimeFrom1( int port )
 {
     int retVal = API_RESULT_SUCCESS;
 
-    postResult( retVal );
+    postResult( retVal, false );
     pageContent += ":";
     pageContent += _apiKeywords[API_KEYWORD_FROM1];
     pageContent += "=";
     pageContent += tblEntry[port].hourFrom_1;
     pageContent += ":";
     pageContent += tblEntry[port].minuteFrom_1;
-    pageContent += "<br>\n";
+    pageContent += "<br>";
 
     return( retVal );
 }
@@ -3076,7 +3460,7 @@ int postTimeTo1( int port )
 {
     int retVal = API_RESULT_SUCCESS;
 
-    postResult( retVal );
+    postResult( retVal, false );
     pageContent += ":";
 
     pageContent += _apiKeywords[API_KEYWORD_TO1];
@@ -3084,7 +3468,7 @@ int postTimeTo1( int port )
     pageContent += tblEntry[port].hourTo_1;
     pageContent += ":";
     pageContent += tblEntry[port].minuteTo_1;
-    pageContent += "<br>\n";
+    pageContent += "<br>";
 
     return( retVal );
 }
@@ -3100,7 +3484,7 @@ int postTimeFrom2( int port )
 {
     int retVal = API_RESULT_SUCCESS;
 
-    postResult( retVal );
+    postResult( retVal, false );
     pageContent += ":";
 
     pageContent += _apiKeywords[API_KEYWORD_FROM2];
@@ -3108,7 +3492,7 @@ int postTimeFrom2( int port )
     pageContent += tblEntry[port].hourFrom_2;
     pageContent += ":";
     pageContent += tblEntry[port].minuteFrom_2;
-    pageContent += "<br>\n";
+    pageContent += "<br>";
 
     return( retVal );
 }
@@ -3124,7 +3508,7 @@ int postTimeTo2( int port )
 {
     int retVal = API_RESULT_SUCCESS;
 
-    postResult( retVal );
+    postResult( retVal, false );
     pageContent += ":";
 
     pageContent += _apiKeywords[API_KEYWORD_TO2];
@@ -3132,7 +3516,7 @@ int postTimeTo2( int port )
     pageContent += tblEntry[port].hourTo_2;
     pageContent += ":";
     pageContent += tblEntry[port].minuteTo_2;
-    pageContent += "<br>\n";
+    pageContent += "<br>";
 
     return( retVal );
 }
@@ -3148,7 +3532,7 @@ int postExt1( int port )
 {
     int retVal = API_RESULT_SUCCESS;
 
-    postResult( retVal );
+    postResult( retVal, false );
     pageContent += ":";
 
     pageContent += _apiKeywords[API_KEYWORD_EXT1];
@@ -3162,7 +3546,7 @@ int postExt1( int port )
     {
         pageContent += API_VALUE_DISABLE;
     }
-    pageContent += "<br>\n";
+    pageContent += "<br>";
 
     return( retVal );
 }
@@ -3178,7 +3562,7 @@ int postExt2( int port )
 {
     int retVal = API_RESULT_SUCCESS;
 
-    postResult( retVal );
+    postResult( retVal, false );
     pageContent += ":";
 
     pageContent += _apiKeywords[API_KEYWORD_EXT2];
@@ -3192,7 +3576,7 @@ int postExt2( int port )
     {
         pageContent += API_VALUE_DISABLE;
     }
-    pageContent += "<br>\n";
+    pageContent += "<br>";
 
     return( retVal );
 }
@@ -3208,14 +3592,14 @@ int postMode( int port )
 {
     int retVal = API_RESULT_SUCCESS;
 
-    postResult( retVal );
+    postResult( retVal, false );
     pageContent += ":";
 
     pageContent += _apiKeywords[API_KEYWORD_MODE];
     pageContent += "=";
 
     pageContent += tblEntry[port].mode;
-    pageContent += "<br>\n";
+    pageContent += "<br>";
 
     return( retVal );
 }
@@ -3232,7 +3616,10 @@ int checkApiKey( const char* apiKey )
 {
     int retVal = API_RESULT_SUCCESS;
 
-    postResult( retVal );
+    postResult( retVal, false );
+    pageContent += ":";
+    pageContent += apiKey;
+    pageContent += "<br>";
 
     return( retVal );
 }
@@ -3248,11 +3635,12 @@ int postApiKey( const char* apiKey )
 {
     int retVal = API_RESULT_SUCCESS;
 
-    postResult( retVal );
+    postResult( retVal, false );
     pageContent += ":";
     pageContent += _apiKeywords[API_KEYWORD_APIKEY];
     pageContent += "=";
-    pageContent +=  String(apiKey);
+    pageContent +=  apiHashKey;
+    pageContent += "<br>";
 
     return( retVal );
 }
@@ -3264,7 +3652,7 @@ int postApiKey( const char* apiKey )
 //
 // ************************************************************************
 //
-int postResult( int resultCode )
+int postResult( int resultCode, bool lineFeed )
 {
     int retVal = API_RESULT_SUCCESS;
 
@@ -3280,9 +3668,6 @@ int postResult( int resultCode )
             break;
         case API_RESULT_INVALID_MODE:
             pageContent += API_MSG_INVALID_MODE;
-            break;
-        case API_RESULT_MISSING_TIMEVALUE:
-            pageContent += API_MSG_MISSING_TIMEVALUE;
             break;
         case API_RESULT_INVALID_TIMEVALUE:
             pageContent += API_MSG_INVALID_TIMEVALUE;
@@ -3303,27 +3688,296 @@ int postResult( int resultCode )
             pageContent += API_MSG_UNKNOWN_RESULTCODE;
             break;
     }
-    pageContent += "<br>\n";            
+    
+    if( lineFeed )
+    {
+        pageContent += "<br>";
+    }            
 
     return( retVal );
 }
 
-//
-// ************************************************************************
-//
-// ---------- bool isValidTime( const char* minute )
-//
-// ************************************************************************
-//
-bool isValidTime( const char* minute )
+
+
+
+
+
+
+/*
+ * Copyright (c) 2000-2002 Opsycon AB  (www.opsycon.se)
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *  This product includes software developed by Opsycon AB.
+ * 4. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
+ * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ */
+ 
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#include <ctype.h>
+ 
+#define MAXLN 200
+#define ISSPACE " \t\n\r\f\v"
+ 
+size_t
+strcspn (const char *p, const char *s)
 {
-    bool retVal = true;
-// bool isValidHour( const char* hour )
-// bool isValidMinute( const char* minute )
-
-    return( retVal );
+    int i, j;
+ 
+    for (i = 0; p[i]; i++) {
+        for (j = 0; s[j]; j++) {
+            if (s[j] == p[i])
+                break;
+        }
+        if (s[j])
+            break;
+    }
+    return (i);
 }
+ 
+char *
+_getbase(char *p, int *basep)
+{
+    if (p[0] == '0') {
+        switch (p[1]) {
+        case 'x':
+            *basep = 16;
+            break;
+        case 't': case 'n':
+            *basep = 10;
+            break;
+        case 'o':
+            *basep = 8;
+            break;
+        default:
+            *basep = 10;
+            return (p);
+        }
+        return (p + 2);
+    }
+    *basep = 10;
+    return (p);
+}
+ 
+/*
+ *  _atob(vp,p,base)
+ */
+int
+_atob (uint32_t *vp, char *p, int base)
+{
+    uint32_t value, v1, v2;
+    char *q, tmp[20];
+    int digit;
+ 
+    if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        base = 16;
+        p += 2;
+    }
+ 
+    if (base == 16 && (q = strchr (p, '.')) != 0) {
+        if (q - p > sizeof(tmp) - 1)
+            return (0);
+ 
+        strncpy (tmp, p, q - p);
+        tmp[q - p] = '\0';
+        if (!_atob (&v1, tmp, 16))
+            return (0);
+ 
+        q++;
+        if (strchr (q, '.'))
+            return (0);
+ 
+        if (!_atob (&v2, q, 16))
+            return (0);
+        *vp = (v1 << 16) + v2;
+        return (1);
+    }
+ 
+    value = *vp = 0;
+    for (; *p; p++) {
+        if (*p >= '0' && *p <= '9')
+            digit = *p - '0';
+        else if (*p >= 'a' && *p <= 'f')
+            digit = *p - 'a' + 10;
+        else if (*p >= 'A' && *p <= 'F')
+            digit = *p - 'A' + 10;
+        else
+            return (0);
+ 
+        if (digit >= base)
+            return (0);
+        value *= base;
+        value += digit;
+    }
+    *vp = value;
+    return (1);
+}
+ 
+/*
+ *  atob(vp,p,base)
+ *      converts p to binary result in vp, rtn 1 on success
+ */
+int
+atob(uint32_t *vp, char *p, int base)
+{
+    uint32_t v;
+    if (base == 0)
+        p = _getbase (p, &base);
+    if (_atob (&v, p, base)) {
+        *vp = v;
+        return (1);
+    }
+    return (0);
+}
+ 
+/*
+ *  vsscanf(buf,fmt,ap)
+ */
+ 
+int
+vsscanf (const char *buf, const char *s, va_list ap)
+{
+    uint32_t             count, noassign, width, base, lflag;
+    const char     *tc;
+    char           *t, tmp[MAXLN];
+ 
+    count = noassign = width = lflag = 0;
+    while (*s && *buf) {
+    while (isspace (*s))
+        s++;
+    if (*s == '%') {
+        s++;
+        for (; *s; s++) {
+        if (strchr ("dibouxcsefg%", *s))
+            break;
+        if (*s == '*')
+            noassign = 1;
+        else if (*s == 'l' || *s == 'L')
+            lflag = 1;
+        else if (*s >= '1' && *s <= '9') {
+            for (tc = s; isdigit (*s); s++);
+            strncpy (tmp, tc, s - tc);
+            tmp[s - tc] = '\0';
+            atob (&width, tmp, 10);
+            s--;
+        }
+        }
+        if (*s == 's') {
+        while (isspace (*buf))
+            buf++;
+        if (!width)
+            width = strcspn (buf, ISSPACE);
+        if (!noassign) {
+            strncpy (t = va_arg (ap, char *), buf, width);
+            t[width] = '\0';
+        }
+        buf += width;
+        } else if (*s == 'c') {
+        if (!width)
+            width = 1;
+        if (!noassign) {
+            strncpy (t = va_arg (ap, char *), buf, width);
+            t[width] = '\0';
+        }
+        buf += width;
+        } else if (strchr ("dobxu", *s)) {
+        while (isspace (*buf))
+            buf++;
+        if (*s == 'd' || *s == 'u')
+            base = 10;
+        else if (*s == 'x')
+            base = 16;
+        else if (*s == 'o')
+            base = 8;
+        else if (*s == 'b')
+            base = 2;
+        if (!width) {
+            if (isspace (*(s + 1)) || *(s + 1) == 0)
+            width = strcspn (buf, ISSPACE);
+            else
+            width = strchr (buf, *(s + 1)) - buf;
+        }
+        strncpy (tmp, buf, width);
+        tmp[width] = '\0';
+        buf += width;
+        if (!noassign)
+            atob (va_arg (ap, uint32_t *), tmp, base);
+        }
+        if (!noassign)
+        count++;
+        width = noassign = lflag = 0;
+        s++;
+    } else {
+        while (isspace (*buf))
+        buf++;
+        if (*s != *buf)
+        break;
+        else
+        s++, buf++;
+    }
+    }
+    return (count);
+}
+ 
+ 
+int
+sscanf (const char *buf, const char *fmt, ...)
+{
+    int             count;
+    va_list ap;
+   
+    va_start (ap, fmt);
+    count = vsscanf (buf, fmt, ap);
+    va_end (ap);
+    return (count);
+}
+ 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
 //
 // ************************************************************************
 //
@@ -3337,6 +3991,9 @@ void processApiCall( int keyword, const char* arg )
     // that will be used as Web-api-key
 
     int retVal;
+    char hourScan[3];
+    char minScan[3];
+     
 
     if( arg != NULL )
     {
@@ -3348,16 +4005,16 @@ void processApiCall( int keyword, const char* arg )
                     // extended update - arg is the name of
                     //                   update file to use
                     retVal = handleUpdateEx(arg);
-                    postResult( retVal );
+                    postResult( retVal, true );
                 }
                 else
                 {
                     // regular update - just call file check
                     retVal = handleUpdate();
-                    postResult( retVal );
+                    postResult( retVal, true );
                 }
                 break;
-            case API_KEYWORD_APIKEY:
+            case API_KEYWORD_APIKEY:                            
                 if( strlen(arg) > 0 )
                 {
                     // check whether the argument is a valid
@@ -3374,19 +4031,19 @@ void processApiCall( int keyword, const char* arg )
             case API_KEYWORD_PORT:
                 if( strlen(arg) <= 0 )
                 {        
-                    postResult( API_RESULT_MISSING_PORT );
+                    postResult( API_RESULT_MISSING_PORT, true );
                 }
                 break;
             case API_KEYWORD_MODE:
                 if( server.arg( _apiKeywords[API_KEYWORD_PORT] ).length() )
                 {
-                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt();
+                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt() - 1;
                     
                     if(server.arg( _apiKeywords[API_KEYWORD_MODE] ).equalsIgnoreCase(API_VALUE_AUTO))
                     {
                         tblEntry[port].mode = API_VALUE_AUTO;
                         retVal = E_SUCCESS;
-                        postResult( retVal );
+                        postResult( retVal, true );
                     }
                     else
                     {
@@ -3394,7 +4051,7 @@ void processApiCall( int keyword, const char* arg )
                         {
                             tblEntry[port].mode = API_VALUE_OFF;
                             retVal = E_SUCCESS;
-                            postResult( retVal );
+                            postResult( retVal, true );
                         }
                         else
                         {
@@ -3402,13 +4059,13 @@ void processApiCall( int keyword, const char* arg )
                             {
                                 tblEntry[port].mode = API_VALUE_ON;
                                 retVal = E_SUCCESS;
-                                postResult( retVal );
+                                postResult( retVal, true );
                             }
                             else
                             {
-                                if(server.arg( _apiKeywords[API_KEYWORD_MODE] ) )
+                                if(server.arg( _apiKeywords[API_KEYWORD_MODE] ).length() )
                                 {
-                                    postResult( API_RESULT_INVALID_MODE );
+                                    postResult( API_RESULT_INVALID_MODE, true );
                                 }
                                 else
                                 {
@@ -3420,132 +4077,150 @@ void processApiCall( int keyword, const char* arg )
                 }
                 else
                 {
-                    postResult( API_RESULT_MISSING_PORT );
+                    postResult( API_RESULT_MISSING_PORT, true );
                 }
                 break;
             case API_KEYWORD_FROM1:
             case API_KEYWORD_TO1:
             case API_KEYWORD_FROM2:
             case API_KEYWORD_TO2:
-                if( strlen(arg) > 0 )
+                if( server.arg( _apiKeywords[API_KEYWORD_PORT] ).length() )
                 {
-                    if( server.arg( _apiKeywords[API_KEYWORD_PORT] ).length() )
-                    {
-                        int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt();
-                      
-                        if( isValidTime(arg) )
+                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt() - 1;
+                    
+                    if( strlen(arg) > 0 )
+                    {  
+                        switch(keyword)
                         {
-                            switch(keyword)
-                            {
-                                case API_KEYWORD_FROM1:
-                                    if( server.arg( _apiKeywords[API_KEYWORD_FROM1] ))
+                            case API_KEYWORD_FROM1:
+                                if( server.arg( _apiKeywords[API_KEYWORD_FROM1] ))
+                                {
+                                    retVal = sscanf(arg, "%2s:%2s",hourScan, minScan);
+                                    if( isValidHour(hourScan) && isValidMinute(minScan) )
                                     {
+                                        tblEntry[port].hourFrom_1 = hourScan;
+                                        tblEntry[port].minuteFrom_1 = minScan;
+
                                         retVal = E_SUCCESS;
-                                        postResult( retVal );                                      
+                                        postResult( retVal, true );                                      
                                     }
                                     else
                                     {
-                                      postTimeFrom1( port );
+                                        retVal = API_RESULT_INVALID_TIMEVALUE;
+                                        postResult( retVal, true );
                                     }
-                                                                  
-// String   hourFrom_1;
-// String   minuteFrom_1;                                
-// tblEntry[port].hourFrom_1 =
-// tblEntry[port].minuteFrom_1 =
-
-// tblEntry[port].hourTo_1 =
-// tblEntry[port].minuteTo_1 =
-
-// tblEntry[port].hourFrom_2 =
-// tblEntry[port].minuteFrom_2 =
-
-// tblEntry[port].hourTo_2 =
-// tblEntry[port].minuteTo_2 =
-
-
-                                    break;
-                                case API_KEYWORD_TO1:
-                                    if( server.arg( _apiKeywords[API_KEYWORD_TO1] ))
+                                }
+                                break;
+                            case API_KEYWORD_TO1:
+                                if( server.arg( _apiKeywords[API_KEYWORD_TO1] ))
+                                {
+                                    retVal = sscanf(arg, "%2s:%2s",hourScan, minScan);
+                                    if( isValidHour(hourScan) && isValidMinute(minScan) )
                                     {
+                                        tblEntry[port].hourTo_1 = hourScan;
+                                        tblEntry[port].minuteTo_1 = minScan;
+
                                         retVal = E_SUCCESS;
-                                        postResult( retVal );                                      
+                                        postResult( retVal, true );                                      
                                     }
                                     else
                                     {
-                                      postTimeTo1( port );
+                                        retVal = API_RESULT_INVALID_TIMEVALUE;
+                                        postResult( retVal, true );
                                     }
+                                }
+                                break;                                
+                            case API_KEYWORD_FROM2:
+                                if( server.arg( _apiKeywords[API_KEYWORD_FROM2] ))
+                                {
+                                    retVal = sscanf(arg, "%2s:%2s",hourScan, minScan);
+                                    if( isValidHour(hourScan) && isValidMinute(minScan) )
+                                    {
+                                        tblEntry[port].hourFrom_2 = hourScan;
+                                        tblEntry[port].minuteFrom_2 = minScan;
 
-                                    break;                                
-                                case API_KEYWORD_FROM2:
-                                    if( server.arg( _apiKeywords[API_KEYWORD_FROM2] ))
-                                    {
                                         retVal = E_SUCCESS;
-                                        postResult( retVal );                                      
+                                        postResult( retVal, true );                                      
                                     }
                                     else
                                     {
-                                      postTimeFrom2( port );
+                                        retVal = API_RESULT_INVALID_TIMEVALUE;
+                                        postResult( retVal, true );
                                     }
-                                  
-                                    break;
-                                case API_KEYWORD_TO2:
-                                    if( server.arg( _apiKeywords[API_KEYWORD_TO2] ))
+                                }
+                                break;
+                            case API_KEYWORD_TO2:
+                                if( server.arg( _apiKeywords[API_KEYWORD_TO2] ))
+                                {
+                                    retVal = sscanf(arg, "%2s:%2s",hourScan, minScan);
+                                    if( isValidHour(hourScan) && isValidMinute(minScan) )
                                     {
+                                        tblEntry[port].hourTo_2 = hourScan;
+                                        tblEntry[port].minuteTo_2 = minScan;
+
                                         retVal = E_SUCCESS;
-                                        postResult( retVal );                                      
+                                        postResult( retVal, true );                                      
                                     }
                                     else
                                     {
-                                      postTimeTo2( port );
+                                        retVal = API_RESULT_INVALID_TIMEVALUE;
+                                        postResult( retVal, true );
                                     }
-                                    break;
+                                }
+                                break;
                             }
-                        }
-                        else
-                        {
-                            postResult( API_RESULT_INVALID_TIMEVALUE );
-                        }
                     }
                     else
                     {
-                        postResult( API_RESULT_MISSING_PORT );
+                        switch(keyword)
+                        {
+                            case API_KEYWORD_FROM1:
+                                postTimeFrom1( port );
+                                break;
+                            case API_KEYWORD_TO1:
+                                postTimeTo1( port );
+                                break;
+                            case API_KEYWORD_FROM2:
+                                postTimeFrom2( port );
+                                break;
+                            case API_KEYWORD_TO2:    
+                                postTimeTo2( port );
+                                break;                            
+                        }      
                     }
                 }
                 else
                 {
-                    postResult( API_RESULT_MISSING_TIMEVALUE );
+                    postResult( API_RESULT_MISSING_PORT, true );
                 }
-                pageContent += "<br>\n";                  
                 break;
             case API_KEYWORD_TIME1:
             case API_KEYWORD_TIME2:
                 if( server.arg( _apiKeywords[API_KEYWORD_PORT] ).length() )
                 {    
-                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt();
+                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt() - 1;
 
                     if(keyword == API_KEYWORD_TIME1)
                     {
                         if(server.arg( _apiKeywords[API_KEYWORD_TIME1] ).equalsIgnoreCase(API_VALUE_ENABLE))
                         {
-
                             tblEntry[port].enabled_1 = true;
                             retVal = E_SUCCESS;
-                            postResult( retVal );
+                            postResult( retVal, true );
                         }
                         else
                         {
-
                             if(server.arg( _apiKeywords[API_KEYWORD_TIME1] ).equalsIgnoreCase(API_VALUE_DISABLE))
                             {
                                 tblEntry[port].enabled_1 = false;
                                 retVal = E_SUCCESS;
-                                postResult( retVal );
+                                postResult( retVal, true );
                             }
                             else
                             {
-                                if(server.arg(_apiKeywords[API_KEYWORD_TIME1]))
+                                if(server.arg(_apiKeywords[API_KEYWORD_TIME1]).length())
                                 {
-                                    postResult( API_RESULT_INVALID_MODE_TIME1 );
+                                    postResult( API_RESULT_INVALID_MODE_TIME1, true );
                                 }
                                 else
                                 {
@@ -3562,7 +4237,7 @@ void processApiCall( int keyword, const char* arg )
                             {
                                 tblEntry[port].enabled_2 = true;
                                 retVal = E_SUCCESS;
-                                postResult( retVal );
+                                postResult( retVal, true );
                             }
                             else
                             {
@@ -3571,14 +4246,13 @@ void processApiCall( int keyword, const char* arg )
                                 {
                                     tblEntry[port].enabled_2 = false;
                                     retVal = E_SUCCESS;
-                                    postResult( retVal );
+                                    postResult( retVal, true );
                                 }
                                 else
                                 {
-
-                                    if(server.arg(_apiKeywords[API_KEYWORD_TIME2]))
+                                    if(server.arg(_apiKeywords[API_KEYWORD_TIME2]).length())
                                     {
-                                        postResult( API_RESULT_INVALID_MODE_TIME2 );
+                                        postResult( API_RESULT_INVALID_MODE_TIME2, true );
                                     }
                                     else
                                     {
@@ -3592,20 +4266,20 @@ void processApiCall( int keyword, const char* arg )
                 }
                 else
                 {
-                    postResult( API_RESULT_MISSING_PORT );
+                    postResult( API_RESULT_MISSING_PORT, true );
                 }
                 break;
             case API_KEYWORD_EXT1:
                 if( server.arg( _apiKeywords[API_KEYWORD_PORT] ).length() )
                 {
-                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt();
+                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt() - 1;
                   
                     if(server.arg( _apiKeywords[API_KEYWORD_EXT1] ).equalsIgnoreCase(API_VALUE_ENABLE))
                     {
 
                         tblEntry[port].extEnable_1 = true;
                         retVal = E_SUCCESS;
-                        postResult( retVal );
+                        postResult( retVal, true );
                     }
                     else
                     {
@@ -3614,16 +4288,16 @@ void processApiCall( int keyword, const char* arg )
 
                             tblEntry[port].extEnable_1 = false;
                             retVal = E_SUCCESS;
-                            postResult( retVal );
+                            postResult( retVal, true );
                         }
                         else
-                        {
+                        { 
                             if(server.arg( _apiKeywords[API_KEYWORD_EXT1] ).equalsIgnoreCase(API_VALUE_ON))
                             {
 // trigger ext1                       tblEntry[port]
-
+                                startExt1Mode();
                                 retVal = E_SUCCESS;
-                                postResult( retVal );
+                                postResult( retVal, true );
                             }
                             else
                             {
@@ -3631,14 +4305,15 @@ void processApiCall( int keyword, const char* arg )
                                 {                              
 // trigger ext1                       tblEntry[port]
 
+                                    stopExt1Mode();
                                     retVal = E_SUCCESS;
-                                    postResult( retVal );
+                                    postResult( retVal, true );
                                 }
                                 else
                                 {                          
-                                    if(server.arg( _apiKeywords[API_KEYWORD_EXT1] ) )
+                                    if(server.arg( _apiKeywords[API_KEYWORD_EXT1] ).length() )
                                     {
-                                        postResult( API_RESULT_INVALID_MODE_EXT1 );
+                                        postResult( API_RESULT_INVALID_MODE_EXT1, true );
                                     }
                                     else
                                     {
@@ -3651,20 +4326,38 @@ void processApiCall( int keyword, const char* arg )
                 }
                 else
                 {
-                    postResult( API_RESULT_MISSING_PORT );
+                    if(server.arg( _apiKeywords[API_KEYWORD_EXT1] ).equalsIgnoreCase(API_VALUE_ON))
+                    {
+                        startExt1Mode();
+                        retVal = E_SUCCESS;
+                        postResult( retVal, true );
+                     }
+                     else
+                     {
+                        if(server.arg( _apiKeywords[API_KEYWORD_EXT1] ).equalsIgnoreCase(API_VALUE_OFF))
+                        {                              
+                            stopExt1Mode();
+                            retVal = E_SUCCESS;
+                            postResult( retVal, true );
+                        }
+                        else
+                        {
+                            postResult( API_RESULT_MISSING_PORT, true );
+                        }
+                    }                  
                 }
                 break;   
             case API_KEYWORD_EXT2:
                 if( server.arg( _apiKeywords[API_KEYWORD_PORT] ).length() )
                 {
-                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt();
+                    int port = server.arg( _apiKeywords[API_KEYWORD_PORT] ).toInt() - 1;
                   
                     if(server.arg( _apiKeywords[API_KEYWORD_EXT2] ).equalsIgnoreCase(API_VALUE_ENABLE))
                     {
 
                         tblEntry[port].extEnable_2 = true;
                         retVal = E_SUCCESS;
-                        postResult( retVal );
+                        postResult( retVal, true );
                         
                     }
                     else
@@ -3674,7 +4367,7 @@ void processApiCall( int keyword, const char* arg )
 
                             tblEntry[port].extEnable_2 = false;
                             retVal = E_SUCCESS;
-                            postResult( retVal );
+                            postResult( retVal, true );
 
                         }
                         else
@@ -3683,8 +4376,9 @@ void processApiCall( int keyword, const char* arg )
                             {
 // trigger ext1                       tblEntry[port]
 
+                                startExt2Mode();
                                 retVal = E_SUCCESS;
-                                postResult( retVal );
+                                postResult( retVal, true );
                             }
                             else
                             {
@@ -3692,14 +4386,15 @@ void processApiCall( int keyword, const char* arg )
                                 {                              
 // trigger ext1                       tblEntry[port]
 
+                                    stopExt2Mode();
                                     retVal = E_SUCCESS;
-                                    postResult( retVal );
+                                    postResult( retVal, true );
                                 }
                                 else
                                 {      
-                                    if(server.arg( _apiKeywords[API_KEYWORD_EXT2] ) )
+                                    if(server.arg( _apiKeywords[API_KEYWORD_EXT2] ).length() )
                                     {
-                                        postResult( API_RESULT_INVALID_MODE_EXT2 );
+                                        postResult( API_RESULT_INVALID_MODE_EXT2, true );
                                     }
                                     else
                                     {
@@ -3712,12 +4407,34 @@ void processApiCall( int keyword, const char* arg )
                 }
                 else
                 {
-                    postResult( API_RESULT_MISSING_PORT );
+                    if(server.arg( _apiKeywords[API_KEYWORD_EXT2] ).equalsIgnoreCase(API_VALUE_ON))
+                    {
+// trigger ext1                       tblEntry[port]
+
+                        startExt2Mode();
+                        retVal = E_SUCCESS;
+                        postResult( retVal, true );
+                     }
+                     else
+                     {
+                         if(server.arg( _apiKeywords[API_KEYWORD_EXT2] ).equalsIgnoreCase(API_VALUE_OFF))
+                         {                              
+// trigger ext1                       tblEntry[port]
+
+                             stopExt2Mode();
+                             retVal = E_SUCCESS;
+                             postResult( retVal, true );
+                         }
+                         else
+                         {
+                             postResult( API_RESULT_MISSING_PORT, true );
+                         }
+                     }
                 }
                 break;   
             default:
                 pageContent += "120:ERR: UNKNOWN OPTION";
-                pageContent += "<br>\n";            
+                pageContent += "<br>";            
                 break;
         }
     }
@@ -3736,55 +4453,71 @@ void apiPage()
   int i;
   pageContent = "";
 
-  pageContent  = "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">\n";
-  pageContent += "<html>\n";
-  pageContent += "<head>\n";
-  pageContent += "<meta charset=\"utf-8\">\n";
-  pageContent += "<title>Web-API</title>\n";
-  pageContent += "</head>\n";
-  pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\">\n";
+  pageContent  = "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">";
+  pageContent += "<html>";
+  pageContent += "<head>";
+  pageContent += "<meta charset=\"utf-8\">";
+  pageContent += "<title>Web-API</title>";
+  pageContent += "</head>";
+  pageContent += "<body bgcolor=\"#D4C9C9\" text=\"#000000\" link=\"#1E90FF\" vlink=\"#0000FF\">";
 
 #ifdef DO_LOG
   if ( !beQuiet )
   {
-    Logger.Log(LOGLEVEL_DEBUG, (const char*) "apiPage<br>\n");
+    Logger.Log(LOGLEVEL_DEBUG, (const char*) "apiPage<br>");
   }
 #endif // DO_LOG
 
-  pageContent += String("apiPage<br>\n");
+  pageContent += String("apiPage<br>");
 
   if ( server.method() == SERVER_METHOD_POST )
   {
     LEDRed();
-    pageContent += String("POST REQUEST - NO MORE OUTPUT!<br>\n");
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      pageContent += String("POST REQUEST - NO MORE OUTPUT!<br>");
+    }
+#endif // DO_LOG
   }
   else
   {
     LEDBlue();
-    pageContent += String("GET REQUEST<br>\n");
+#ifdef DO_LOG
+    if ( !beQuiet )
+    {
+      pageContent += String("GET REQUEST<br>");
+    }
+#endif // DO_LOG
 
 #ifdef DO_LOG
     if ( !beQuiet )
     {
-      Logger.Log(LOGLEVEL_DEBUG, (const char*) "GET REQUEST<br>\n");
+      Logger.Log(LOGLEVEL_DEBUG, (const char*) "GET REQUEST<br>");
     }
 #endif // DO_LOG
 
-    pageContent += "<br>\n";
 
     // loop over NUM_API_KEYWORDS-1 items only because of NULL at the end    
     for( i = 0; i < (NUM_API_KEYWORDS-1); i++ )
     {
-      pageContent += "server.argName[" + String(i) + "] = " + server.argName(i);
-      pageContent += " -> server.hasArg[" + String(_apiKeywords[i]) + "] = " + server.hasArg( _apiKeywords[i] );
-      pageContent += " -> server.arg("    + String(_apiKeywords[i]) + ") = " + server.arg( _apiKeywords[i] );
-      pageContent += "<br>\n";
+
+#ifdef DO_LOG
+      if ( !beQuiet )
+      {
+        pageContent += "server.argName[" + String(i) + "] = " + server.argName(i);
+        pageContent += " -> server.hasArg[" + String(_apiKeywords[i]) + "] = " + server.hasArg( _apiKeywords[i] );
+        pageContent += " -> server.arg("    + String(_apiKeywords[i]) + ") = " + server.arg( _apiKeywords[i] );
+        pageContent += "<br>";
+      }
+#endif // DO_LOG
 
       if( server.hasArg( _apiKeywords[i] ) )
       {
         if( server.arg( _apiKeywords[i] ) )
         {
           processApiCall( i, server.arg(_apiKeywords[i]).c_str()) ;
+          // this seems always been called
         }
         else
         {
@@ -3793,8 +4526,8 @@ void apiPage()
       }
     }
 
-    pageContent += "</body>\n";
-    pageContent += "</html>\n";
+    pageContent += "</body>";
+    pageContent += "</html>";
 
     server.send(200, "text/html", pageContent);
   }
